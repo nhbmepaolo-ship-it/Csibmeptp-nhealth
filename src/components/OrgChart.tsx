@@ -433,20 +433,39 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
     await Promise.all(
       imgs.map(async (img) => {
         try {
-          if (img.src && img.src.startsWith('data:')) return;
+          if (img.src && img.src.startsWith('data:image/png;base64,')) return;
 
           const currentSrc = img.currentSrc || img.src;
           if (!currentSrc) return;
 
-          // 1. If image is already fully loaded in DOM, try direct canvas draw
+          // 1. If image is already fully loaded in DOM, try direct canvas draw with square crop
           if (img.complete && img.naturalWidth > 0) {
             try {
+              const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
+              const nw = img.naturalWidth;
+              const nh = img.naturalHeight;
+              const targetW = isAvatar ? 160 : nw;
+              const targetH = isAvatar ? 160 : nh;
+
               const cvs = document.createElement('canvas');
-              cvs.width = img.naturalWidth;
-              cvs.height = img.naturalHeight;
+              cvs.width = targetW;
+              cvs.height = targetH;
               const ctx = cvs.getContext('2d');
               if (ctx) {
-                ctx.drawImage(img, 0, 0);
+                if (isAvatar) {
+                  // Center-crop to square
+                  let sx = 0, sy = 0, sw = nw, sh = nh;
+                  if (nw > nh) {
+                    sw = nh;
+                    sx = (nw - nh) / 2;
+                  } else if (nh > nw) {
+                    sh = nw;
+                    sy = (nh - nw) / 2;
+                  }
+                  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+                } else {
+                  ctx.drawImage(img, 0, 0, targetW, targetH);
+                }
                 const dataUrl = cvs.toDataURL('image/png');
                 if (dataUrl && dataUrl.length > 200) {
                   img.src = dataUrl;
@@ -489,17 +508,47 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
           }
 
           if (blob) {
-            await new Promise<void>((resolve) => {
+            const dataUrl = await new Promise<string>((resolve) => {
               const reader = new FileReader();
-              reader.onloadend = () => {
-                if (reader.result && typeof reader.result === 'string') {
-                  img.src = reader.result;
-                }
-                resolve();
-              };
-              reader.onerror = () => resolve();
-              reader.readAsDataURL(blob);
+              reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(blob!);
             });
+
+            if (dataUrl) {
+              const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
+              if (isAvatar) {
+                const tempImg = new Image();
+                await new Promise<void>((resolve) => {
+                  tempImg.onload = () => resolve();
+                  tempImg.onerror = () => resolve();
+                  tempImg.src = dataUrl;
+                });
+
+                if (tempImg.naturalWidth > 0) {
+                  const nw = tempImg.naturalWidth;
+                  const nh = tempImg.naturalHeight;
+                  const cvs = document.createElement('canvas');
+                  cvs.width = 160;
+                  cvs.height = 160;
+                  const ctx = cvs.getContext('2d');
+                  if (ctx) {
+                    let sx = 0, sy = 0, sw = nw, sh = nh;
+                    if (nw > nh) {
+                      sw = nh;
+                      sx = (nw - nh) / 2;
+                    } else if (nh > nw) {
+                      sh = nw;
+                      sy = (nh - nw) / 2;
+                    }
+                    ctx.drawImage(tempImg, sx, sy, sw, sh, 0, 0, 160, 160);
+                    img.src = cvs.toDataURL('image/png');
+                    return;
+                  }
+                }
+              }
+              img.src = dataUrl;
+            }
           }
         } catch (e) {
           console.warn('Image prep warning:', e);
@@ -538,90 +587,145 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
 
   // Capture canvas logic with exact visual preview match
   const captureOrgChartCanvas = async (element: HTMLElement) => {
-    await prepareChartImagesForExport(element);
+    const originalTransform = element.style.transform;
+    element.style.transform = 'none';
 
-    const targetWidth = chartRef.current?.offsetWidth || 1400;
+    try {
+      await prepareChartImagesForExport(element);
 
-    return await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#eaf4fb',
-      logging: false,
-      windowWidth: 1600,
-      windowHeight: 1200,
-      scrollX: 0,
-      scrollY: 0,
-      onclone: (clonedDoc) => {
-        // 1. Sanitize all <style> tags in cloned document to remove any oklab/oklch/color-mix CSS declarations that break html2canvas
-        const styleTags = clonedDoc.querySelectorAll('style');
-        styleTags.forEach(style => {
-          if (style.textContent) {
-            style.textContent = style.textContent
-              .replace(/oklab\([^)]+\)/g, 'rgba(0,0,0,0)')
-              .replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)')
-              .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)');
-          }
-        });
+      const exportWidth = 1400;
 
-        // 2. Sanitize inline style attributes across all elements in cloned document
-        const allClonedNodes = clonedDoc.querySelectorAll('*');
-        allClonedNodes.forEach(node => {
-          const el = node as HTMLElement;
-          const styleAttr = el.getAttribute('style');
-          if (styleAttr && (styleAttr.includes('oklab') || styleAttr.includes('oklch') || styleAttr.includes('color-mix'))) {
-            el.setAttribute(
-              'style',
-              styleAttr
+      return await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#eaf4fb',
+        logging: false,
+        windowWidth: 1600,
+        windowHeight: 2200,
+        width: exportWidth,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (clonedDoc) => {
+          // 1. Sanitize all <style> tags in cloned document to remove any oklab/oklch/color-mix CSS declarations that break html2canvas
+          const styleTags = clonedDoc.querySelectorAll('style');
+          styleTags.forEach(style => {
+            if (style.textContent) {
+              style.textContent = style.textContent
                 .replace(/oklab\([^)]+\)/g, 'rgba(0,0,0,0)')
                 .replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)')
-                .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)')
-            );
+                .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)');
+            }
+          });
+
+          // 2. Sanitize inline style attributes across all elements in cloned document
+          const allClonedNodes = clonedDoc.querySelectorAll('*');
+          allClonedNodes.forEach(node => {
+            const el = node as HTMLElement;
+            const styleAttr = el.getAttribute('style');
+            if (styleAttr && (styleAttr.includes('oklab') || styleAttr.includes('oklch') || styleAttr.includes('color-mix'))) {
+              el.setAttribute(
+                'style',
+                styleAttr
+                  .replace(/oklab\([^)]+\)/g, 'rgba(0,0,0,0)')
+                  .replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)')
+                  .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)')
+              );
+            }
+          });
+
+          const clonedEl = clonedDoc.getElementById('org-chart-print-area') as HTMLElement;
+          if (!clonedEl) return;
+
+          // Hide edit buttons and interactive popups in export
+          const buttons = clonedDoc.querySelectorAll('button');
+          buttons.forEach(btn => {
+            (btn as HTMLElement).style.display = 'none';
+          });
+
+          // Set exact poster width and layout
+          clonedEl.style.width = '1400px';
+          clonedEl.style.minWidth = '1400px';
+          clonedEl.style.maxWidth = '1400px';
+          clonedEl.style.height = 'auto';
+          clonedEl.style.minHeight = 'auto';
+          clonedEl.style.maxHeight = 'none';
+          clonedEl.style.overflow = 'visible';
+          clonedEl.style.position = 'relative';
+          clonedEl.style.transform = 'none';
+          clonedEl.style.margin = '0 auto';
+          clonedEl.style.padding = '32px 36px';
+          clonedEl.style.boxSizing = 'border-box';
+          clonedEl.style.background = 'linear-gradient(135deg, #eaf4fb 0%, #f4fafe 50%, #d6ebf7 100%)';
+          clonedEl.style.backgroundColor = '#eaf4fb';
+          clonedEl.style.color = '#0f2942';
+
+          // Force branches row to be flex row across full width
+          const branches = clonedDoc.getElementById('org-chart-branches') as HTMLElement;
+          if (branches) {
+            branches.style.display = 'flex';
+            branches.style.flexDirection = 'row';
+            branches.style.justifyContent = 'space-between';
+            branches.style.alignItems = 'flex-start';
+            branches.style.width = '100%';
+            branches.style.gap = '24px';
+            branches.style.boxSizing = 'border-box';
+
+            Array.from(branches.children).forEach(child => {
+              const bChild = child as HTMLElement;
+              bChild.style.flex = '1 1 0';
+              bChild.style.width = '32%';
+              bChild.style.minWidth = '0';
+              bChild.style.boxSizing = 'border-box';
+            });
           }
-        });
 
-        const clonedEl = clonedDoc.getElementById('org-chart-print-area') as HTMLElement;
-        if (!clonedEl) return;
+          // Ensure all avatar images in clonedDoc stay strictly 76px x 76px circular
+          const clonedImgs = clonedEl.querySelectorAll('img');
+          clonedImgs.forEach(cImg => {
+            if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
+              cImg.style.width = '76px';
+              cImg.style.height = '76px';
+              cImg.style.minWidth = '76px';
+              cImg.style.minHeight = '76px';
+              cImg.style.maxWidth = '76px';
+              cImg.style.maxHeight = '76px';
+              cImg.style.borderRadius = '50%';
+              cImg.style.objectFit = 'cover';
+              cImg.style.display = 'block';
 
-        // Hide edit buttons and interactive popups in export
-        const buttons = clonedDoc.querySelectorAll('button');
-        buttons.forEach(btn => {
-          (btn as HTMLElement).style.display = 'none';
-        });
+              if (cImg.parentElement) {
+                cImg.parentElement.style.width = '76px';
+                cImg.parentElement.style.height = '76px';
+                cImg.parentElement.style.minWidth = '76px';
+                cImg.parentElement.style.minHeight = '76px';
+                cImg.parentElement.style.maxWidth = '76px';
+                cImg.parentElement.style.maxHeight = '76px';
+                cImg.parentElement.style.borderRadius = '50%';
+                cImg.parentElement.style.overflow = 'hidden';
+              }
+            }
+          });
 
-        // Set exact poster width and layout
-        clonedEl.style.width = `${targetWidth}px`;
-        clonedEl.style.minWidth = `${targetWidth}px`;
-        clonedEl.style.maxWidth = `${targetWidth}px`;
-        clonedEl.style.height = 'auto';
-        clonedEl.style.minHeight = 'auto';
-        clonedEl.style.maxHeight = 'none';
-        clonedEl.style.overflow = 'visible';
-        clonedEl.style.position = 'relative';
-        clonedEl.style.transform = 'none';
-        clonedEl.style.margin = '0 auto';
-        clonedEl.style.padding = '24px 28px';
-        clonedEl.style.boxSizing = 'border-box';
-        clonedEl.style.background = 'linear-gradient(135deg, #eaf4fb 0%, #f4fafe 50%, #d6ebf7 100%)';
-        clonedEl.style.backgroundColor = '#eaf4fb';
-        clonedEl.style.color = '#0f2942';
+          // Unwrap overflow parent containers
+          let parent = clonedEl.parentElement;
+          while (parent && parent !== clonedDoc.body) {
+            parent.style.overflow = 'visible';
+            parent.style.height = 'auto';
+            parent.style.minHeight = 'auto';
+            parent.style.maxHeight = 'none';
+            parent.style.display = 'block';
+            parent = parent.parentElement;
+          }
 
-        // Unwrap overflow parent containers
-        let parent = clonedEl.parentElement;
-        while (parent && parent !== clonedDoc.body) {
-          parent.style.overflow = 'visible';
-          parent.style.height = 'auto';
-          parent.style.minHeight = 'auto';
-          parent.style.maxHeight = 'none';
-          parent.style.display = 'block';
-          parent = parent.parentElement;
+          clonedDoc.body.style.overflow = 'visible';
+          clonedDoc.body.style.height = 'auto';
+          clonedDoc.body.style.backgroundColor = '#eaf4fb';
         }
-
-        clonedDoc.body.style.overflow = 'visible';
-        clonedDoc.body.style.height = 'auto';
-        clonedDoc.body.style.backgroundColor = '#eaf4fb';
-      }
-    });
+      });
+    } finally {
+      element.style.transform = originalTransform;
+    }
   };
 
   // PDF Export Handler supporting Portrait (A4 - default), Fit-Poster (zero margin), and Landscape (A4)

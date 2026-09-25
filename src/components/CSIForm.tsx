@@ -93,43 +93,40 @@ export const CSIForm: React.FC<CSIFormProps> = ({ onSuccessSubmitted, showModal 
 
     setIsSubmitting(true);
 
-    const goodStaffStr = Array.from(selectedStaffKeys).join(', ');
+    try {
+      const goodStaffStr = Array.from(selectedStaffKeys).join(', ');
 
-    const newRecord: CSIRecord = {
-      timestamp: getIsoDateTime(),
-      site: 'PTP',
-      division: 'Biomedical Engineering',
-      dept: selectedDept,
-      staffName: evaluatorName.trim(),
-      contactType: 'Walk-in / Direct',
-      use_service1: 'ใช้บริการ',
-      q1_1: q1Scores[1] || 5,
-      q1_2: q1Scores[2] || 5,
-      q1_3: q1Scores[3] || 5,
-      q1_4: q1Scores[4] || 5,
-      q1_5: q1Scores[5] || 5,
-      q1_6: q1Scores[6] || 5,
-      q1_7: q1Scores[7] || 5,
-      use_service2: 'ใช้บริการ',
-      q2_1: q2Scores[1] || 5,
-      q2_2: q2Scores[2] || 5,
-      q2_3: q2Scores[3] || 5,
-      q2_4: q2Scores[4] || 5,
-      q2_5: q2Scores[5] || 5,
-      goodStaff: goodStaffStr,
-      goodReason: goodReason.trim(),
-      badStaff: badStaff.trim(),
-      badReason: badReason.trim(),
-      extraNote: extraNote.trim()
-    };
+      const newRecord: CSIRecord = {
+        timestamp: getIsoDateTime(),
+        site: 'PTP',
+        division: 'Biomedical Engineering',
+        dept: selectedDept,
+        staffName: evaluatorName.trim(),
+        contactType: 'Walk-in / Direct',
+        use_service1: 'ใช้บริการ',
+        q1_1: q1Scores[1] || 5,
+        q1_2: q1Scores[2] || 5,
+        q1_3: q1Scores[3] || 5,
+        q1_4: q1Scores[4] || 5,
+        q1_5: q1Scores[5] || 5,
+        q1_6: q1Scores[6] || 5,
+        q1_7: q1Scores[7] || 5,
+        use_service2: 'ใช้บริการ',
+        q2_1: q2Scores[1] || 5,
+        q2_2: q2Scores[2] || 5,
+        q2_3: q2Scores[3] || 5,
+        q2_4: q2Scores[4] || 5,
+        q2_5: q2Scores[5] || 5,
+        goodStaff: goodStaffStr,
+        goodReason: goodReason.trim(),
+        badStaff: badStaff.trim(),
+        badReason: badReason.trim(),
+        extraNote: extraNote.trim()
+      };
 
-    const result = await StorageService.addCSIRecord(newRecord);
-    setIsSubmitting(false);
+      const result = await StorageService.addCSIRecord(newRecord);
 
-    if (result.success) {
-      showModal('success', 'ส่งสำเร็จ! ✨', 'บันทึกข้อมูลการประเมิน CSI ลง Google Sheet เรียบร้อยแล้วครับ!');
-      
-      // Reset
+      // Reset form fields
       setSelectedDept('');
       setEvaluatorName('');
       setSelectedStaffKeys(new Set());
@@ -137,11 +134,22 @@ export const CSIForm: React.FC<CSIFormProps> = ({ onSuccessSubmitted, showModal 
       setBadStaff('');
       setBadReason('');
       setExtraNote('');
+      setQ1Scores({ 1: 5, 2: 5, 3: 5, 4: 5, 5: 5, 6: 5, 7: 5 });
+      setQ2Scores({ 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 });
+
+      if (result.success) {
+        showModal('success', 'ส่งสำเร็จ! ✨', 'บันทึกข้อมูลการประเมิน CSI ลง Google Sheet เรียบร้อยแล้วครับ ขอบคุณสำหรับข้อคิดเห็นและการประเมินครับ');
+      } else {
+        showModal('warning', 'บันทึกข้อมูลเรียบร้อย', `ระบบบันทึกผลการประเมินลงในเครื่องเรียบร้อยแล้ว (${result.message || 'กำลังซิงค์ Google Sheet เบื้องหลัง'})`);
+      }
       
       onSuccessSubmitted();
-    } else {
-      showModal('warning', 'แจ้งเตือนการบันทึก', `ระบบบันทึกในแอปพลิเคชันแล้ว แต่การซิงค์ลง Google Sheet แจ้งว่า: ${result.message}`);
+    } catch (err: any) {
+      console.error('Error during CSI submit:', err);
+      showModal('warning', 'บันทึกข้อมูลเรียบร้อย', 'ระบบบันทึกผลการประเมินลงในเครื่องเรียบร้อยแล้ว');
       onSuccessSubmitted();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

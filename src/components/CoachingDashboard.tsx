@@ -47,6 +47,28 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
     setEmployees(emps);
   };
 
+  const cleanOrgPhotoUrl = (url?: string): string => {
+    if (!url) return '';
+    let cleaned = url.trim();
+
+    cleaned = cleaned
+      .replace('https://img2.pic.in.th/images/BME_563770..045756.png', 'https://img2.pic.in.th/BME_563770..045756.png')
+      .replace('https://img1.pic.in.th/images/BME_603892..045611.png', 'https://img2.pic.in.th/BME_603892..045611.png')
+      .replace('https://img2.pic.in.th/images/BME_563779..045629.png', 'https://img1.pic.in.th/images/BME_563779..045629.png')
+      .replace('https://img2.pic.in.th/images/BME_606675..045820.png', 'https://img2.pic.in.th/BME_606675..045820.png')
+      .replace('https://img2.pic.in.th/images/BME_612366..045835.png', 'https://img2.pic.in.th/BME_612366..045835.png')
+      .replace('https://img2.pic.in.th/S__6471705_0-removebg-preview.png', 'https://img1.pic.in.th/images/970d1e089ad78d07db702e1eab5698c6.png');
+
+    if (cleaned.includes('drive.google.com')) {
+      const m = cleaned.match(/\/d\/([a-zA-Z0-9_-]+)/) || cleaned.match(/id=([a-zA-Z0-9_-]+)/);
+      if (m && m[1]) {
+        return `https://lh3.googleusercontent.com/d/${m[1]}`;
+      }
+    }
+
+    return cleaned;
+  };
+
   const getProxiedImageUrl = (url?: string) => {
     if (!url) return '';
     if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -58,8 +80,8 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
   };
 
   const getEmployeePhoto = (rec: CoachingRecord): string => {
-    if (rec.photoUrl && rec.photoUrl.trim().length > 5) {
-      return rec.photoUrl;
+    if (rec.photoUrl && rec.photoUrl.trim().length > 5 && !rec.photoUrl.includes('dicebear')) {
+      return cleanOrgPhotoUrl(rec.photoUrl);
     }
 
     const clean = (s?: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -68,47 +90,53 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
     const id = clean(rec.empId);
 
     // 1. Direct verified match for BME PTP staff
-    if (f.includes('chalee') || f.includes('ชาลี') || n === 'ปิ้ง' || id === '761080') {
+    if (f.includes('chalee') || f.includes('ชาลี') || n === 'ปิ้ง' || id === '761080' || id.includes('mgr')) {
       return 'https://img2.pic.in.th/S__6471704_0-removebg-preview.png';
     }
-    if (f.includes('raschanee') || f.includes('รัชณี') || n === 'มิน' || id === '569492') {
+    if (f.includes('raschanee') || f.includes('รัชณี') || n === 'มิน' || id === '569492' || id.includes('spv')) {
       return 'https://img1.pic.in.th/images/970d1e089ad78d07db702e1eab5698c6.png';
-    }
-    if (f.includes('supattra') || f.includes('สุพัตรา') || n === 'เปี้ยว' || id === '563770') {
-      return 'https://img2.pic.in.th/BME_563770..045756.png';
-    }
-    if (f.includes('suwapa') || f.includes('สุวาภา') || n === 'อ้อ' || id === '612366') {
-      return 'https://img2.pic.in.th/BME_612366..045835.png';
-    }
-    if (f.includes('aiyaret') || f.includes('ไอยเรศ') || n.includes('เป๊ก') || id === '603892') {
-      return 'https://img2.pic.in.th/BME_603892..045611.png';
-    }
-    if (f.includes('suphawat') || f.includes('ศุภวัฒน์') || n.includes('ตาล') || id === '606675') {
-      return 'https://img2.pic.in.th/BME_606675..045820.png';
-    }
-    if (f.includes('kanthida') || f.includes('กานต์ธิดา') || n.includes('แฮม') || id === '563775') {
-      return 'https://img1.pic.in.th/images/5fb2f77d94121bd37.png';
-    }
-    if (f.includes('pannapat') || f.includes('พรรณพัชร') || n.includes('อ้น') || n.includes('อ้อน') || id === '622659') {
-      return 'https://img2.pic.in.th/4447b7344aeba4742.png';
-    }
-    if (f.includes('jatasig') || f.includes('จตสิกข์') || n.includes('เอิ๊ก')) {
-      return 'https://img1.pic.in.th/images/625192.png';
     }
     if (f.includes('nattaporn') || f.includes('ณัฐพร') || f.includes('ณฐพร') || n.includes('นท') || n === 'ณฐ' || id === '563779') {
       return 'https://img1.pic.in.th/images/BME_563779..045629.png';
     }
+    if (f.includes('supattra') || f.includes('สุพัตรา') || n === 'เปี้ยว' || id === '563770') {
+      return 'https://img2.pic.in.th/BME_563770..045756.png';
+    }
+    if (f.includes('aiyaret') || f.includes('ไอยเรศ') || n.includes('เป๊ก') || n.includes('เป็ก') || id === '603892') {
+      return 'https://img2.pic.in.th/BME_603892..045611.png';
+    }
+    if (f.includes('suphawat') || f.includes('ศุภวัฒน์') || n.includes('ตาล') || n.includes('ลูกตาล') || id === '606675') {
+      return 'https://img2.pic.in.th/BME_606675..045820.png';
+    }
+    if (f.includes('suwapa') || f.includes('สุวภา') || f.includes('สุวาภา') || n === 'อ้อ' || id === '612366') {
+      return 'https://img2.pic.in.th/BME_612366..045835.png';
+    }
     if (f.includes('thaweewat') || f.includes('ทวีวัฒน์') || n.includes('ซัน') || id === '614669') {
       return 'https://img1.pic.in.th/images/BME_614669..045936.png';
     }
-    if (f.includes('titima') || f.includes('ฐิติมา') || n.includes('จิ๊บ') || id === '616475') {
+    if (f.includes('titima') || f.includes('ฐิติมา') || f.includes('ธิติมา') || n.includes('จิ๊บ') || id === '616475') {
       return 'https://img1.pic.in.th/images/BME_616475..050052.png';
     }
-    if (f.includes('pinmanee') || f.includes('ปิ่นมณี') || n.includes('ปิ่น')) {
+    if (f.includes('kanthida') || f.includes('กานต์ธิดา') || n.includes('แฮม') || id === '622659' || id === '563775') {
+      return 'https://img1.pic.in.th/images/5fb2f77d94121bd37.png';
+    }
+    if (f.includes('pannapat') || f.includes('พรรณพัชร') || n.includes('อ้อน') || n.includes('อ้น') || id === '622947') {
+      return 'https://img2.pic.in.th/4447b7344aeba4742.png';
+    }
+    if (f.includes('jatasig') || f.includes('เจตสิก') || f.includes('จตสิกข์') || n.includes('เอิ๊ก') || id === '625192') {
+      return 'https://img1.pic.in.th/images/625192.png';
+    }
+    if (f.includes('pinmanee') || f.includes('ปิ่นมณี') || n.includes('ปิ่น') || id === '625195') {
       return 'https://img2.pic.in.th/3dd5cdfa08338f7c4.png';
     }
     if (f.includes('salisa') || f.includes('ศลิษา') || n.includes('ษา') || id === '620331') {
       return 'https://img1.pic.in.th/images/6596ac2053383a160.png';
+    }
+    if (f.includes('sutatip') || f.includes('สุธาทิพย์') || n.includes('ปุ้ย') || id === '627537') {
+      return 'https://img2.pic.in.th/ChatGPT-Image-Sep-4-2026-05_05_36-PM.png';
+    }
+    if (f.includes('pichaya') || f.includes('พิชญา') || n.includes('ไอซ์') || id === '627826') {
+      return 'https://img1.pic.in.th/images/49d801c9-c50d-4ac0-b054-85b551c86d98.png';
     }
 
     // 2. Lookup in loaded employees from storage
@@ -119,8 +147,8 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
       return (id && eu === id) || (f && ef === f) || (n && en === n);
     });
 
-    if (matched?.img && matched.img.trim().length > 5) {
-      return matched.img;
+    if (matched?.img && matched.img.trim().length > 5 && !matched.img.includes('dicebear')) {
+      return cleanOrgPhotoUrl(matched.img);
     }
 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.nickname || rec.fullName || rec.empId)}&skinColor=f8d25c`;
@@ -527,12 +555,19 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
                           : 'bg-slate-800 border-white/20'
                       }`}>
                         <img
-                          src={getProxiedImageUrl(getEmployeePhoto(rec))}
+                          src={cleanOrgPhotoUrl(getEmployeePhoto(rec))}
                           alt={rec.nickname || rec.fullName}
-                          crossOrigin="anonymous"
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.nickname || rec.fullName)}&skinColor=f8d25c`;
+                            const img = e.currentTarget;
+                            const direct = cleanOrgPhotoUrl(getEmployeePhoto(rec));
+                            if (!img.dataset.triedProxy && direct.startsWith('http')) {
+                              img.dataset.triedProxy = 'true';
+                              img.src = getProxiedImageUrl(direct);
+                            } else if (!img.dataset.triedFallback) {
+                              img.dataset.triedFallback = 'true';
+                              img.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.nickname || rec.fullName || rec.empId)}&skinColor=f8d25c`;
+                            }
                           }}
                         />
                       </div>
@@ -722,12 +757,19 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
                       <td className={`py-3 px-3 font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                         <div className="flex items-center gap-2.5">
                           <img
-                            src={getProxiedImageUrl(getEmployeePhoto(rec))}
+                            src={cleanOrgPhotoUrl(getEmployeePhoto(rec))}
                             alt={rec.nickname || rec.fullName}
-                            crossOrigin="anonymous"
                             className="w-8 h-8 rounded-full object-cover border border-indigo-400/40 shadow-xs flex-shrink-0"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.nickname || rec.fullName)}&skinColor=f8d25c`;
+                              const img = e.currentTarget;
+                              const direct = cleanOrgPhotoUrl(getEmployeePhoto(rec));
+                              if (!img.dataset.triedProxy && direct.startsWith('http')) {
+                                img.dataset.triedProxy = 'true';
+                                img.src = getProxiedImageUrl(direct);
+                              } else if (!img.dataset.triedFallback) {
+                                img.dataset.triedFallback = 'true';
+                                img.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rec.nickname || rec.fullName || rec.empId)}&skinColor=f8d25c`;
+                              }
                             }}
                           />
                           <div>
@@ -922,12 +964,19 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl overflow-hidden border border-indigo-400/40 shadow-md flex-shrink-0 relative">
                   <img
-                    src={getProxiedImageUrl(editForm.photoUrl || getEmployeePhoto(editingRecord))}
+                    src={cleanOrgPhotoUrl(editForm.photoUrl || (editingRecord ? getEmployeePhoto(editingRecord) : ''))}
                     alt={editingRecord.nickname || editingRecord.fullName}
-                    crossOrigin="anonymous"
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(editingRecord.nickname || editingRecord.fullName)}&skinColor=f8d25c`;
+                      const img = e.currentTarget;
+                      const direct = cleanOrgPhotoUrl(editForm.photoUrl || (editingRecord ? getEmployeePhoto(editingRecord) : ''));
+                      if (!img.dataset.triedProxy && direct.startsWith('http')) {
+                        img.dataset.triedProxy = 'true';
+                        img.src = getProxiedImageUrl(direct);
+                      } else if (!img.dataset.triedFallback) {
+                        img.dataset.triedFallback = 'true';
+                        img.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(editingRecord.nickname || editingRecord.fullName || editingRecord.empId)}&skinColor=f8d25c`;
+                      }
                     }}
                   />
                 </div>

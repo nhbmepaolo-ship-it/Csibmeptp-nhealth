@@ -991,14 +991,24 @@ async function startServer() {
       };
 
       const sendToGas = async (url: string, p: any) => {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(p),
-          redirect: 'follow'
-        });
-        const text = await response.text();
-        return { ok: response.ok, text };
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 7000);
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p),
+            redirect: 'follow',
+            signal: controller.signal
+          });
+          clearTimeout(timer);
+          const text = await response.text();
+          return { ok: response.ok, text };
+        } catch (fetchErr: any) {
+          clearTimeout(timer);
+          console.warn('sendToGas fetch error or timed out:', fetchErr.message || fetchErr);
+          return { ok: false, text: `ERROR: ${fetchErr.message || fetchErr}` };
+        }
       };
 
       // Attempt 1: Send structured payload to target URL
