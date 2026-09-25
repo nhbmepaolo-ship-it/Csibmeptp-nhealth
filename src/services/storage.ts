@@ -2,6 +2,7 @@ import { Employee, CSIRecord, VoteRecord, ActivityRecord, ActivityCategory, Card
 import { INITIAL_EMPLOYEES, INITIAL_CSI_RECORDS, INITIAL_VOTES, INITIAL_ACTIVITIES, HAPPY_LIFE_CLUBS } from '../data/initialData';
 import { INITIAL_ORG_CHART } from '../data/initialOrgChart';
 import { INITIAL_COACHING_RECORDS } from '../data/initialCoachingData';
+import { getStaffPhoto } from '../utils/staffAvatars';
 
 export const FIXED_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxYN-S1ejO-6-IWM11q84UjCcV4X6xiSPy9YgkSKichlnoyQ7RSC6xW_SW_DN1UUmoXMA/exec';
 
@@ -308,7 +309,37 @@ export class StorageService {
         });
         if (byId) return byId;
 
-        // Match by Name or Nickname
+        // 2. Match by known staff aliases
+        const staffAliases: { match: (f: string, n: string, id: string) => boolean; targetCodes: string[] }[] = [
+          { match: (f, n, id) => f.includes('chalee') || f.includes('ชาลี') || n === 'ปิ้ง' || id.includes('mgr'), targetCodes: ['MGR_BME', '761080', 'chalee'] },
+          { match: (f, n, id) => f.includes('raschanee') || f.includes('รัชณี') || n === 'มิน' || id.includes('spv'), targetCodes: ['SPV_BME', '569492', 'raschanee'] },
+          { match: (f, n, id) => f.includes('supattra') || f.includes('สุพัตรา') || n === 'เปี้ยว' || id.includes('563770'), targetCodes: ['563770', 'supattra'] },
+          { match: (f, n, id) => f.includes('suwapa') || f.includes('สุวาภา') || f.includes('สุวภา') || n === 'อ้อ' || id.includes('612366'), targetCodes: ['612366', 'suwapa'] },
+          { match: (f, n, id) => f.includes('aiyaret') || f.includes('ไอยเรศ') || n.includes('เป๊ก') || n.includes('เป็ก') || id.includes('603892'), targetCodes: ['603892', 'aiyaret'] },
+          { match: (f, n, id) => f.includes('suphawat') || f.includes('ศุภวัฒน์') || n.includes('ลูกตาล') || n.includes('ลูกตอล') || n.includes('ตาล') || id.includes('606675'), targetCodes: ['606675', 'suphawat'] },
+          { match: (f, n, id) => f.includes('kanthida') || f.includes('กานต์ธิดา') || n.includes('แฮม') || id.includes('622659') || id.includes('563775'), targetCodes: ['622659', '563775', 'kanthida'] },
+          { match: (f, n, id) => f.includes('pannapat') || f.includes('พรรณพัชร') || n.includes('อ้อน') || n.includes('อ้น') || id.includes('622947'), targetCodes: ['622947', 'pannapat'] },
+          { match: (f, n, id) => f.includes('jatasig') || f.includes('เจตสิก') || f.includes('จตสิกข์') || n.includes('เอิ๊ก') || n.includes('เอ็ก') || id.includes('625192'), targetCodes: ['625192', 'jatasig'] },
+          { match: (f, n, id) => f.includes('nattaporn') || f.includes('ณัฐพร') || f.includes('ณฐพร') || n.includes('นท') || n === 'ณฐ' || id.includes('563779'), targetCodes: ['563779', 'nattaporn'] },
+          { match: (f, n, id) => f.includes('thaweewat') || f.includes('ทวีวัฒน์') || n.includes('ซัน') || id.includes('614669'), targetCodes: ['614669', 'thaweewat'] },
+          { match: (f, n, id) => f.includes('titima') || f.includes('ฐิติมา') || f.includes('ธิติมา') || n.includes('จิ๊บ') || id.includes('616475'), targetCodes: ['616475', 'titima'] },
+          { match: (f, n, id) => f.includes('pinmanee') || f.includes('ปิ่นมณี') || n.includes('ปิ่น') || id.includes('625195'), targetCodes: ['625195', 'pinmanee'] },
+          { match: (f, n, id) => f.includes('sutatip') || f.includes('สุธาทิพย์') || n.includes('ปุ้ย') || n.includes('ปุ๋ย') || id.includes('627537'), targetCodes: ['627537', 'sutatip'] },
+          { match: (f, n, id) => f.includes('pichaya') || f.includes('พิชญา') || n.includes('ไอซ์') || id.includes('627826'), targetCodes: ['627826', 'pichaya'] }
+        ];
+
+        for (const alias of staffAliases) {
+          if (alias.match(nodeF, nodeN, cleanStr(rawId))) {
+            const found = employees.find(e => {
+              const eu = cleanStr(e.username);
+              const ef = cleanStr(e.fullName);
+              return alias.targetCodes.some(code => eu.includes(cleanStr(code)) || ef.includes(cleanStr(code)));
+            });
+            if (found) return found;
+          }
+        }
+
+        // 3. Match by Name or Nickname
         return employees.find(e => {
           const ef = cleanStr(e.fullName);
           const en = cleanStr(e.nickname);
@@ -323,7 +354,27 @@ export class StorageService {
         if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
           let hasChanges = false;
           parsed.nodes = parsed.nodes.map((node: any) => {
-            // Replace resigned employee Salisa Saelim with active employee Pichaya Narapong
+            // 1. Replace placeholder Naruemol with active UCC staff Sutatip Aiemmee
+            if (node.fullName?.includes('Naruemol') || node.fullName?.includes('นฤมล') || node.employeeId?.includes('naruemol')) {
+              hasChanges = true;
+              return {
+                id: node.id || 'org-7',
+                employeeId: 'sheet-emp-627537',
+                fullName: 'Sutatip Aiemmee',
+                nickname: 'ปุ้ย',
+                roleTitle: 'Admin / Junior Staff',
+                badgeLevel: 'Junior Staff',
+                photoUrl: 'https://img2.pic.in.th/ChatGPT-Image-Sep-4-2026-05_05_36-PM.png',
+                tags: [
+                  { id: 't-7', text: 'Admin', color: 'orange' },
+                  { id: 't-8', text: 'Junior Staff', color: 'amber' }
+                ],
+                branchId: node.branchId || 'ucc',
+                order: node.order || 5
+              };
+            }
+
+            // 2. Replace resigned employee Salisa Saelim with active employee Pichaya Narapong
             if (node.fullName?.includes('Salisa') || node.fullName?.includes('ศลิษา') || node.employeeId?.includes('620331')) {
               hasChanges = true;
               return {
@@ -363,6 +414,12 @@ export class StorageService {
               }
               if (node.employeeId !== matched.id) {
                 node.employeeId = matched.id;
+                hasChanges = true;
+              }
+            } else {
+              const canonical = getStaffPhoto(node.employeeId, node.nickname, node.fullName);
+              if (canonical && !canonical.includes('dicebear') && (!currentPhoto || currentPhoto.includes('dicebear') || currentPhoto !== canonical)) {
+                currentPhoto = canonical;
                 hasChanges = true;
               }
             }
@@ -884,24 +941,32 @@ export class StorageService {
       }
     }
 
-    // Check if user already voted in this category and month
-    const existing = votes.find(
-      v => v.voter.toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
-    );
-
-    if (existing) {
-      return {
-        success: false,
-        message: `คุณเคยโหวตในหัวข้อ '${category}' ของรอบเดือน ${voteMonth} ไปแล้ว! (เลือกรอบเดือนอื่นได้)`
-      };
-    }
-
     const now = new Date();
     const nowMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (voteMonth > nowMonthKey) {
       return {
         success: false,
         message: 'ไม่สามารถโหวตล่วงหน้าในเดือนอนาคตได้ กรุณาเลือกเดือนปัจจุบันหรือย้อนหลัง'
+      };
+    }
+
+    // Check if user already voted in this category and month, if so, update vote
+    const existingIndex = votes.findIndex(
+      v => v.voter.toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
+    );
+
+    if (existingIndex !== -1) {
+      votes[existingIndex] = {
+        ...votes[existingIndex],
+        nominee,
+        timestamp: formatInternationalDateTime(now)
+      };
+      this.saveVotes(votes);
+      this.syncDataToGoogleSheet('sync_votes', { votes }).catch(() => {});
+      return {
+        success: true,
+        message: `อัปเดตคะแนนโหวตหมวด '${category}' เรียบร้อยแล้ว`,
+        monthKey: voteMonth
       };
     }
 
@@ -921,6 +986,109 @@ export class StorageService {
     return {
       success: true,
       message: `บันทึกผลการโหวตรอบเดือน ${voteMonth} เรียบร้อยแล้ว!`,
+      monthKey: voteMonth
+    };
+  }
+
+  static addVotesBatch(
+    voter: string,
+    voteMonth: string,
+    categoryNominees: Record<string, string>
+  ): { success: boolean; message: string; monthKey?: string } {
+    const REQUIRED_CATEGORIES = [
+      'พลังบวกประจำทีม (Positive Energy)',
+      'สุดยอดผู้ช่วยเหลือ (Super Helper)',
+      'ดาวรุ่งนักสร้างสรรค์ (Creative Thinker)',
+      'สุดยอดนักทำงานเป็นทีม (Team Player)'
+    ];
+
+    const missingCats = REQUIRED_CATEGORIES.filter(c => !categoryNominees[c] || !categoryNominees[c].trim());
+    if (missingCats.length > 0) {
+      return {
+        success: false,
+        message: `กรุณาเลือกลงคะแนนให้ครบทั้ง 4 หมวด (ยังขาด: ${missingCats.map(c => c.split(' ')[0]).join(', ')})`
+      };
+    }
+
+    const now = new Date();
+    const nowMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (voteMonth > nowMonthKey) {
+      return {
+        success: false,
+        message: 'ไม่สามารถโหวตล่วงหน้าในเดือนอนาคตได้ กรุณาเลือกเดือนปัจจุบันหรือย้อนหลัง'
+      };
+    }
+
+    const employees = this.getEmployees();
+    const userLower = voter.trim().toLowerCase();
+    const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName.toLowerCase() === userLower);
+
+    // Validate all nominees first before writing any data
+    for (const cat of REQUIRED_CATEGORIES) {
+      const nominee = categoryNominees[cat];
+      const nomineeEmp = employees.find(e => e.fullName === nominee || `${e.fullName} (${e.nickname})` === nominee);
+
+      if (nomineeEmp) {
+        if (nomineeEmp.status === 'resigned' || nomineeEmp.status === 'inactive') {
+          return {
+            success: false,
+            message: `พนักงาน ${nomineeEmp.fullName} (${nomineeEmp.nickname}) พ้นสภาพการเป็นพนักงาน/ลาออกแล้ว ไม่สามารถลงคะแนนในหมวด '${cat}' ได้`
+          };
+        }
+        if ((nomineeEmp as any).resignedMonth && voteMonth >= (nomineeEmp as any).resignedMonth) {
+          return {
+            success: false,
+            message: `พนักงาน ${nomineeEmp.fullName} ลาออกในรอบเดือน ${voteMonth} ไม่สามารถลงคะแนนได้`
+          };
+        }
+      }
+
+      if (voterEmp && nomineeEmp) {
+        if (voterEmp.id === nomineeEmp.id || voterEmp.username.toLowerCase() === nomineeEmp.username.toLowerCase()) {
+          return {
+            success: false,
+            message: `ไม่สามารถลงคะแนนโหวตให้ตนเองในหมวด '${cat}' ได้`
+          };
+        }
+      }
+    }
+
+    const votes = this.getVotes();
+    const timestampStr = formatInternationalDateTime(now);
+
+    for (const cat of REQUIRED_CATEGORIES) {
+      const nominee = categoryNominees[cat];
+      const existingIndex = votes.findIndex(
+        v => v.voter.toLowerCase() === userLower && v.category === cat && v.voteMonth === voteMonth
+      );
+
+      if (existingIndex !== -1) {
+        votes[existingIndex] = {
+          ...votes[existingIndex],
+          nominee,
+          timestamp: timestampStr
+        };
+      } else {
+        votes.unshift({
+          id: 'vote-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          timestamp: timestampStr,
+          voter,
+          category: cat,
+          nominee,
+          voteMonth
+        });
+      }
+    }
+
+    this.saveVotes(votes);
+    // Single Google Sheets sync for all 4 votes to prevent network timeout / abortion
+    this.syncDataToGoogleSheet('sync_votes', { votes }).catch(err => {
+      console.warn('Sync votes batch notice:', err);
+    });
+
+    return {
+      success: true,
+      message: `บันทึกผลการโหวตครบทั้ง 4 หมวดของรอบเดือน ${voteMonth} สำเร็จเรียบร้อย!`,
       monthKey: voteMonth
     };
   }
@@ -1477,7 +1645,13 @@ export class StorageService {
 
       // Save Org Chart from Google Sheet (Tab ผังองค์กร)
       if (data.orgChart && data.orgChart.nodes && data.orgChart.nodes.length > 0) {
-        this.saveOrgChart(data.orgChart);
+        this.saveOrgChart(data.orgChart, false);
+      }
+      // Re-heal and auto-sync Org Chart photo URLs with the latest employee records
+      try {
+        this.getOrgChart();
+      } catch (e) {
+        console.warn('Auto heal org chart notice:', e);
       }
 
       // Save Votes from Google Sheet (Tab Votes)

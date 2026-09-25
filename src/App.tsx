@@ -93,9 +93,11 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    // Start at Default View (Guest Mode - Do not persist login session on reload)
-    setCurrentUser(null);
-    StorageService.setCurrentUser(null);
+    // Restore persistent user session if available so users do not have to re-login every time
+    const savedUser = StorageService.getCurrentUser();
+    if (savedUser) {
+      setCurrentUser(savedUser);
+    }
 
     // Initial silent sync on app mount to load latest data from Google Sheets
     triggerGlobalSync(true);
@@ -458,8 +460,8 @@ export default function App() {
             <BMEStarVote
               key={syncVersion}
               currentUser={currentUser}
-              onLogin={user => setCurrentUser(user)}
-              onLogout={() => setCurrentUser(null)}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
               showToast={showToast}
             />
           )}

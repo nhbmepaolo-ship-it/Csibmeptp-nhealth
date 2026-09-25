@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { OrgNode, OrgChartConfig, Employee, OrgBadgeLevel } from '../types';
 import { StorageService } from '../services/storage';
+import { getStaffPhoto } from '../utils/staffAvatars';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 
@@ -12,7 +13,7 @@ interface OrgChartProps {
 
 export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const [config, setConfig] = useState<OrgChartConfig>(() => StorageService.getOrgChart());
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => StorageService.getEmployees().filter(e => e.status !== 'resigned'));
   const [isEditing, setIsEditing] = useState(false);
 
   // Check 3 allowed users: Chalee Meksuwan, Raschanee Majanit, 563770
@@ -251,12 +252,23 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
 
   // Auto-pull and sync latest employee photos into Org Chart nodes
   const handlePullEmployeePhotos = (silent = false) => {
+    // Read healed and freshest config from StorageService
+    const freshConfig = StorageService.getOrgChart();
     const currentEmps = StorageService.getEmployees().filter(e => e.status !== 'resigned');
+    setEmployees(currentEmps);
     let updatedCount = 0;
 
-    const newNodes = config.nodes.map(node => {
+    const newNodes = freshConfig.nodes.map(node => {
       const matched = findMatchingEmployee(node, currentEmps);
-      const freshPhoto = resolveNodePhoto(node, currentEmps);
+      let freshPhoto = resolveNodePhoto(node, currentEmps);
+
+      // If freshPhoto fell back to dicebear, try canonical staff photo
+      if (freshPhoto.includes('dicebear')) {
+        const canonical = getStaffPhoto(node.employeeId, node.nickname, node.fullName);
+        if (canonical && !canonical.includes('dicebear')) {
+          freshPhoto = canonical;
+        }
+      }
 
       if (freshPhoto && freshPhoto !== node.photoUrl) {
         updatedCount++;
@@ -269,14 +281,12 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       return node;
     });
 
-    if (updatedCount > 0) {
-      const updatedConfig = { ...config, nodes: newNodes };
-      setConfig(updatedConfig);
-      // If silent (on initial mount), do not trigger remote Google Sheets sync
-      StorageService.saveOrgChart(updatedConfig, !silent);
-      if (!silent && showToast) {
-        showToast('success', `ดึงรูปพนักงานล่าสุดเข้าผังองค์กรสำเร็จ (${updatedCount} คน)`);
-      }
+    const updatedConfig = { ...freshConfig, nodes: newNodes };
+    setConfig(updatedConfig);
+    // Persist updated org chart
+    StorageService.saveOrgChart(updatedConfig, false);
+    if (!silent && showToast) {
+      showToast('success', `ซิงค์ดึงรูปพนักงานเข้าผังองค์กรสำเร็จเรียบร้อย (${newNodes.length} คน)`);
     } else if (!silent && showToast) {
       showToast('success', 'รูปพนักงานในผังองค์กรตรงกับฐานข้อมูลล่าสุดแล้ว');
     }
@@ -887,6 +897,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               src={getProxiedImageUrl(displayPhoto)}
               alt={node.fullName}
               crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               style={{
                 width: '100%',
                 height: '100%',
@@ -902,7 +913,13 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               }}
               onError={e => {
                 const img = e.currentTarget;
-                const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(node.nickname || node.fullName || 'staff')}`;
+                const canonical = getStaffPhoto(node.employeeId, node.nickname, node.fullName);
+                if (canonical && img.src !== canonical && !img.dataset.triedCanonical) {
+                  img.dataset.triedCanonical = 'true';
+                  img.src = canonical;
+                  return;
+                }
+                const fallback = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(node.nickname || node.fullName || 'staff')}`;
                 if (img.src !== fallback) {
                   img.src = fallback;
                 }

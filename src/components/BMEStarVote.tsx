@@ -20,6 +20,45 @@ const CATEGORIES = [
   'สุดยอดนักทำงานเป็นทีม (Team Player)'
 ];
 
+const CATEGORY_CONFIG: {
+  [cat: string]: {
+    icon: string;
+    badgeBg: string;
+    borderColor: string;
+    accentColor: string;
+    desc: string;
+  };
+} = {
+  'พลังบวกประจำทีม (Positive Energy)': {
+    icon: 'fa-solid fa-sun',
+    badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    borderColor: 'border-amber-500/40',
+    accentColor: 'text-amber-400',
+    desc: 'ส่งต่อพลังบวก รอยยิ้ม และบรรยากาศที่ดีให้แก่เพื่อนร่วมงานเสมอ'
+  },
+  'สุดยอดผู้ช่วยเหลือ (Super Helper)': {
+    icon: 'fa-solid fa-hand-holding-heart',
+    badgeBg: 'bg-pink-500/20 text-pink-300 border-pink-500/40',
+    borderColor: 'border-pink-500/40',
+    accentColor: 'text-pink-400',
+    desc: 'มีน้ำใจ เสียสละ พร้อมช่วยเหลือแก้ไขปัญหาให้เพื่อนร่วมทีมในทุกสถานการณ์'
+  },
+  'ดาวรุ่งนักสร้างสรรค์ (Creative Thinker)': {
+    icon: 'fa-solid fa-lightbulb',
+    badgeBg: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+    borderColor: 'border-sky-500/40',
+    accentColor: 'text-sky-400',
+    desc: 'ริเริ่มไอเดียใหม่ พัฒนาปรับปรุงงานอย่างสร้างสรรค์ และมีคุณค่า'
+  },
+  'สุดยอดนักทำงานเป็นทีม (Team Player)': {
+    icon: 'fa-solid fa-people-group',
+    badgeBg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    borderColor: 'border-indigo-500/40',
+    accentColor: 'text-indigo-400',
+    desc: 'ร่วมมือร่วมใจ ประสานงานยอดเยี่ยม ทำงานเพื่อความสำเร็จของส่วนรวม'
+  }
+};
+
 const VOTE_BAR_COLORS = [
   { bg: 'rgba(129,140,248,0.85)', border: '#818cf8' },
   { bg: 'rgba(52,211,153,0.85)', border: '#34d399' },
@@ -40,10 +79,10 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>(currentMonthKey);
 
-  // Form states
+  // Form states - 1 person must vote for all 4 categories in one ballot
   const [targetVoteMonth, setTargetVoteMonth] = useState<string>(currentMonthKey);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedNominee, setSelectedNominee] = useState<string>('');
+  const [categoryVotes, setCategoryVotes] = useState<Record<string, string>>({});
+  const [submitSuccessModal, setSubmitSuccessModal] = useState<boolean>(false);
 
   // Login form
   const [loginUser, setLoginUser] = useState('');
@@ -159,12 +198,46 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
     });
   }, [employees, currentUser, targetVoteMonth]);
 
-  // Reset selectedNominee if candidate becomes ineligible
+  // Load existing votes by currentUser for targetVoteMonth
   useEffect(() => {
-    if (selectedNominee && !eligibleCandidates.some(c => c.fullName === selectedNominee)) {
-      setSelectedNominee('');
+    if (!currentUser) {
+      setCategoryVotes({});
+      return;
     }
-  }, [eligibleCandidates, selectedNominee]);
+    const userVotes = votes.filter(
+      v => v.voter.toLowerCase() === currentUser.username.toLowerCase() && v.voteMonth === targetVoteMonth
+    );
+    const initialMap: Record<string, string> = {};
+    CATEGORIES.forEach(cat => {
+      const match = userVotes.find(v => v.category === cat);
+      if (match) {
+        initialMap[cat] = match.nominee;
+      }
+    });
+    setCategoryVotes(initialMap);
+  }, [currentUser, targetVoteMonth, votes]);
+
+  // Clean up any candidate in categoryVotes if they became ineligible
+  useEffect(() => {
+    if (Object.keys(categoryVotes).length > 0 && eligibleCandidates.length > 0) {
+      let changed = false;
+      const updated = { ...categoryVotes };
+      for (const cat of CATEGORIES) {
+        if (updated[cat] && !eligibleCandidates.some(c => c.fullName === updated[cat])) {
+          delete updated[cat];
+          changed = true;
+        }
+      }
+      if (changed) {
+        setCategoryVotes(updated);
+      }
+    }
+  }, [eligibleCandidates]);
+
+  const completedVoteCount = useMemo(() => {
+    return CATEGORIES.filter(cat => !!categoryVotes[cat]?.trim()).length;
+  }, [categoryVotes]);
+  const isAllCategoriesVoted = completedVoteCount === CATEGORIES.length;
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +249,7 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
     const auth = StorageService.authenticateUser(loginUser, loginPass);
     if (auth.success && auth.user) {
       onLogin(auth.user);
+      StorageService.setCurrentUser(auth.user);
       setLoginUser('');
       setLoginPass('');
       showToast('success', `เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${auth.user.fullName}`);
@@ -192,25 +266,22 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
       setActiveTab('login');
       return;
     }
-    if (!selectedCategory || !selectedNominee) {
-      showToast('error', 'กรุณาเลือกหัวข้อและพนักงานที่ต้องการโหวต');
+    if (!isAllCategoriesVoted) {
+      showToast('error', `กรุณาเลือกลงคะแนนให้ครบทั้ง 4 หมวด (ปัจจุบันเลือกแล้ว ${completedVoteCount}/4 หมวด)`);
       return;
     }
 
-    const result = StorageService.addVote(
+    const result = StorageService.addVotesBatch(
       currentUser.username,
-      selectedCategory,
-      selectedNominee,
-      targetVoteMonth
+      targetVoteMonth,
+      categoryVotes
     );
 
     if (result.success) {
       showToast('success', result.message);
-      setSelectedCategory('');
-      setSelectedNominee('');
       loadData();
       if (result.monthKey) setSelectedMonthKey(result.monthKey);
-      setActiveTab('dashboard');
+      setSubmitSuccessModal(true);
     } else {
       showToast('error', result.message);
     }
@@ -451,7 +522,7 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
                   <i className="fa-solid fa-lock"></i>
                 </div>
                 <h2 className="font-th font-extrabold text-xl text-white">ต้องล็อกอินก่อนส่งโหวต</h2>
-                <p className="text-xs text-slate-400">กรุณายืนยันตัวตนด้วยบัญชีพนักงาน BME ของคุณ</p>
+                <p className="text-xs text-slate-400">กรุณายืนยันตัวตนด้วยบัญชีพนักงาน BME ของคุณเพื่อลงคะแนนให้เพื่อนพนักงาน</p>
                 <button
                   onClick={() => setActiveTab('login')}
                   className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-th font-bold text-sm shadow-lg shadow-indigo-600/30"
@@ -460,93 +531,276 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleVoteSubmit} className="max-w-md mx-auto bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5 text-white">
-                  <h2 className="font-th font-extrabold text-lg flex items-center gap-2">
-                    <i className="fa-solid fa-paper-plane"></i>
-                    <span>บัตรลงคะแนนโหวต</span>
-                  </h2>
-                  <p className="text-[11px] text-white/80 mt-1">1 ท่าน โหวตได้เพียง 1 ครั้ง ต่อ 1 หัวข้อ ต่อเดือน</p>
+              <form onSubmit={handleVoteSubmit} className="max-w-3xl mx-auto bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                {/* Ballot Header Banner */}
+                <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white relative">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-th font-black text-xl sm:text-2xl flex items-center gap-2">
+                        <i className="fa-solid fa-square-check text-pink-300"></i>
+                        <span>บัตรลงคะแนนโหวตพนักงานในดวงใจ</span>
+                      </h2>
+                      <p className="text-xs text-white/90 mt-1 font-medium">
+                        📌 กติกา: 1 คนต้องลงคะแนนให้ครบทั้ง 4 หมวด (ไม่สามารถโหวตให้ตนเองหรือคนที่ลาออกแล้วได้)
+                      </p>
+                    </div>
+
+                    <div className="bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shrink-0 flex items-center gap-2 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                      <div>
+                        <div className="text-[10px] text-white/70">ผู้ลงคะแนน:</div>
+                        <div className="font-extrabold text-white">{currentUser.fullName} ({currentUser.nickname})</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                      <i className="fa-solid fa-clock-rotate-left text-pink-400 mr-2"></i>เดือนที่ต้องการโหวตให้
-                    </label>
-                    <select
-                      value={targetVoteMonth}
-                      onChange={e => setTargetVoteMonth(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold outline-none focus:border-indigo-500"
-                    >
-                      {pastMonthChoices.map(mKey => {
-                        const [y, m] = mKey.split('-');
-                        const monthNames = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-                        return (
-                          <option key={mKey} value={mKey}>
-                            {monthNames[parseInt(m)]} {y} {mKey === currentMonthKey ? '(เดือนปัจจุบัน)' : '(โหวตย้อนหลัง)'}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
+                <div className="p-6 space-y-6">
+                  {/* Month Selection & Progress */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                        <i className="fa-solid fa-calendar-check text-pink-400 mr-2"></i>รอบเดือนที่ต้องการโหวต
+                      </label>
+                      <select
+                        value={targetVoteMonth}
+                        onChange={e => setTargetVoteMonth(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-semibold outline-none focus:border-indigo-500 shadow-inner"
+                      >
+                        {pastMonthChoices.map(mKey => {
+                          const [y, m] = mKey.split('-');
+                          const monthNames = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+                          return (
+                            <option key={mKey} value={mKey}>
+                              {monthNames[parseInt(m)]} {y} {mKey === currentMonthKey ? '(เดือนปัจจุบัน)' : '(ย้อนหลัง)'}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                      <i className="fa-solid fa-trophy text-amber-400 mr-2"></i>หัวข้อการโหวต
-                    </label>
-                    <select
-                      value={selectedCategory}
-                      onChange={e => setSelectedCategory(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold outline-none focus:border-indigo-500"
-                      required
-                    >
-                      <option value="">-- เลือกหัวข้อการโหวต --</option>
-                      {CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>🏆 {cat}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                      <i className="fa-solid fa-user-check text-indigo-400 mr-2"></i>พนักงานที่ต้องการโหวตให้
-                    </label>
-                    <select
-                      value={selectedNominee}
-                      onChange={e => setSelectedNominee(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold outline-none focus:border-indigo-500"
-                      required
-                    >
-                      <option value="">-- เลือกพนักงานที่ต้องการโหวตให้ --</option>
-                      {eligibleCandidates.map((emp, idx) => (
-                        <option key={`${emp.id || emp.username || 'emp'}-${idx}`} value={emp.fullName}>
-                          {emp.fullName} ({emp.nickname})
-                        </option>
-                      ))}
-                    </select>
-                    {currentUser && (
-                      <p className="text-[11px] text-amber-300/90 mt-1.5 flex items-center gap-1.5">
-                        <i className="fa-solid fa-circle-info text-amber-400"></i>
-                        <span>เงื่อนไขการโหวต: ไม่สามารถโหวตให้ตนเอง หรือพนักงานที่ลาออกแล้วในรอบเดือนนั้นได้</span>
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="font-bold text-slate-300">
+                          ความคืบหน้าการโหวต:
+                        </span>
+                        <span className={`font-black ${isAllCategoriesVoted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {completedVoteCount} จาก {CATEGORIES.length} หมวด ({Math.round((completedVoteCount / CATEGORIES.length) * 100)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-700/80 p-0.5">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            isAllCategoriesVoted
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-lg shadow-emerald-500/30'
+                              : 'bg-gradient-to-r from-amber-500 to-pink-500'
+                          }`}
+                          style={{ width: `${(completedVoteCount / CATEGORIES.length) * 100}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1.5">
+                        <i className={`fa-solid ${isAllCategoriesVoted ? 'fa-circle-check text-emerald-400' : 'fa-circle-exclamation text-amber-400'}`}></i>
+                        <span>{isAllCategoriesVoted ? 'ลงคะแนนครบทั้ง 4 หมวดแล้ว พร้อมกดยืนยัน' : 'ยังขาดอีก ' + (CATEGORIES.length - completedVoteCount) + ' หมวด โปรดเลือกให้ครบ'}</span>
                       </p>
-                    )}
+                    </div>
                   </div>
 
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-300 flex items-start gap-2">
-                    <i className="fa-solid fa-circle-info text-amber-400 mt-0.5"></i>
-                    <span>เมื่อยืนยันการโหวตแล้ว ระบบจะบันทึกผลการโหวตรอบเดือนที่เลือกทันที</span>
+                  {/* 4 Category Ballot Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {CATEGORIES.map((cat, idx) => {
+                      const meta = CATEGORY_CONFIG[cat] || {
+                        icon: 'fa-solid fa-trophy',
+                        badgeBg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+                        borderColor: 'border-indigo-500/30',
+                        accentColor: 'text-indigo-400',
+                        desc: ''
+                      };
+                      const selectedNominee = categoryVotes[cat] || '';
+                      const nomineeEmp = eligibleCandidates.find(e => e.fullName === selectedNominee);
+                      const isVoted = !!selectedNominee;
+
+                      return (
+                        <div
+                          key={cat}
+                          className={`rounded-2xl border p-4 transition-all duration-200 flex flex-col justify-between ${
+                            isVoted
+                              ? 'bg-slate-800/90 border-indigo-500/50 shadow-md shadow-indigo-500/10'
+                              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div>
+                            {/* Card Top: Category Icon & Title */}
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${meta.badgeBg} border`}>
+                                  <i className={meta.icon}></i>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    หมวดที่ {idx + 1}
+                                  </span>
+                                  <h3 className="font-th font-extrabold text-sm text-white leading-tight">
+                                    {cat}
+                                  </h3>
+                                </div>
+                              </div>
+
+                              {isVoted ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 flex items-center gap-1">
+                                  <i className="fa-solid fa-check text-[9px]"></i> เลือกแล้ว
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
+                                  รอดำเนินการ
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-slate-400 mb-3.5 leading-snug">
+                              {meta.desc}
+                            </p>
+
+                            {/* Dropdown Candidate Selection */}
+                            <label className="block text-[11px] font-bold text-slate-300 mb-1.5">
+                              เลือกพนักงานที่ต้องการโหวต:
+                            </label>
+                            <select
+                              value={selectedNominee}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setCategoryVotes(prev => ({ ...prev, [cat]: val }));
+                              }}
+                              className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold outline-none border transition-all ${
+                                isVoted
+                                  ? 'border-indigo-500/60 focus:border-indigo-400 text-indigo-100'
+                                  : 'border-slate-700 focus:border-indigo-500 text-slate-300'
+                              }`}
+                              required
+                            >
+                              <option value="">-- เลือกพนักงานสำหรับหมวดนี้ --</option>
+                              {eligibleCandidates.map((emp, cIdx) => (
+                                <option key={`${emp.id || emp.username || 'c'}-${cIdx}`} value={emp.fullName}>
+                                  {emp.fullName} ({emp.nickname})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Selected Candidate Preview Thumbnail */}
+                          {nomineeEmp && (
+                            <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center gap-2.5 bg-slate-900/60 p-2 rounded-xl">
+                              <img
+                                src={photoMap[nomineeEmp.fullName] || nomineeEmp.img}
+                                alt={nomineeEmp.fullName}
+                                className="w-8 h-8 rounded-full object-cover border border-indigo-400/50 shrink-0"
+                                onError={e => {
+                                  (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomineeEmp.nickname || nomineeEmp.fullName)}`;
+                                }}
+                              />
+                              <div className="min-w-0 flex-1 text-xs">
+                                <div className="font-bold text-white truncate">{nomineeEmp.fullName}</div>
+                                <div className="text-[10px] text-indigo-300 truncate">ชื่อเล่น: {nomineeEmp.nickname}</div>
+                              </div>
+                              <i className="fa-solid fa-heart text-pink-400 text-sm mr-1"></i>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  <button
-                    type="submit"
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-th font-extrabold text-base shadow-xl shadow-indigo-600/30 hover:opacity-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <i className="fa-regular fa-paper-plane"></i>
-                    <span>ยืนยันคะแนนโหวต</span>
-                  </button>
+                  {/* Submission Notice & Submit Button */}
+                  <div className="space-y-3 pt-2">
+                    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-3 text-xs text-indigo-200 flex items-start gap-2.5">
+                      <i className="fa-solid fa-shield-halved text-indigo-400 text-base mt-0.5 shrink-0"></i>
+                      <div className="leading-relaxed">
+                        <strong>ระบบจะบันทึกคะแนนพร้อมกันทั้ง 4 หมวด:</strong> คุณสามารถแก้ไขและส่งคะแนนใหม่ในรอบเดือนเดียวกันได้ตลอดเวลา คะแนนที่บันทึกจะนับเป็นผลโหวตล่าสุดของคุณ
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!isAllCategoriesVoted}
+                      className={`w-full py-4 rounded-2xl font-th font-extrabold text-base shadow-xl transition-all flex items-center justify-center gap-2.5 ${
+                        isAllCategoriesVoted
+                          ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white shadow-indigo-600/30 cursor-pointer'
+                          : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                      }`}
+                    >
+                      <i className="fa-solid fa-paper-plane text-lg"></i>
+                      <span>
+                        {isAllCategoriesVoted
+                          ? 'ยืนยันผลโหวตครบ 4 หมวด'
+                          : `กรุณาเลือกลงคะแนนให้ครบทั้ง 4 หมวด (${completedVoteCount}/4 หมวด)`}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </form>
+            )}
+
+            {/* Submit Success Modal */}
+            {submitSuccessModal && (
+              <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+                <div className="bg-slate-900 border border-indigo-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full text-center shadow-2xl space-y-5">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto text-3xl">
+                    <i className="fa-solid fa-circle-check"></i>
+                  </div>
+
+                  <div>
+                    <h3 className="font-th font-black text-2xl text-white">
+                      บันทึกผลการโหวตสำเร็จ!
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      คุณได้ลงคะแนนครบทั้ง 4 หมวดรอบเดือน {targetVoteMonth} เรียบร้อยแล้ว
+                    </p>
+                  </div>
+
+                  {/* Summary of chosen nominees */}
+                  <div className="grid grid-cols-2 gap-2 text-left bg-slate-800/80 border border-slate-700 rounded-2xl p-3">
+                    {CATEGORIES.map(cat => {
+                      const nomineeName = categoryVotes[cat];
+                      const emp = employees.find(e => e.fullName === nomineeName);
+                      return (
+                        <div key={cat} className="p-2 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-2">
+                          <img
+                            src={emp ? (photoMap[emp.fullName] || emp.img) : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomineeName || 'nom')}`}
+                            alt={nomineeName}
+                            className="w-7 h-7 rounded-full object-cover shrink-0 border border-indigo-400/40"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] text-pink-300 font-extrabold truncate">{cat.split(' ')[0]}</div>
+                            <div className="text-xs font-bold text-white truncate">{nomineeName ? nomineeName.split(' ')[0] : '-'}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Modal Action Buttons */}
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 font-th">
+                    <button
+                      onClick={() => {
+                        setSubmitSuccessModal(false);
+                        setActiveTab('dashboard');
+                      }}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30"
+                    >
+                      <i className="fa-solid fa-chart-pie mr-1.5"></i>ดูผลคะแนนบนแดชบอร์ด
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSubmitSuccessModal(false);
+                        onLogout();
+                        setActiveTab('login');
+                      }}
+                      className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-pink-300 hover:text-white border border-slate-700 font-bold text-xs"
+                    >
+                      <i className="fa-solid fa-user-plus mr-1.5"></i>ให้เพื่อนโหวตต่อ (สลับผู้ใช้)
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

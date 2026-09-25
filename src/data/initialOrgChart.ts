@@ -91,12 +91,12 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
     },
     {
       id: 'org-7',
-      employeeId: 'emp-naruemol',
-      fullName: 'Naruemol Jonkokguard',
-      nickname: 'นฤมล',
+      employeeId: 'sheet-emp-627537',
+      fullName: 'Sutatip Aiemmee',
+      nickname: 'ปุ้ย',
       roleTitle: 'Admin / Junior Staff',
       badgeLevel: 'Junior Staff',
-      photoUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Naruemol',
+      photoUrl: 'https://img2.pic.in.th/ChatGPT-Image-Sep-4-2026-05_05_36-PM.png',
       tags: [
         { id: 't-7', text: 'Admin', color: 'orange' },
         { id: 't-8', text: 'Junior Staff', color: 'amber' }
