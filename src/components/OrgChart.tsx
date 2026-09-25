@@ -438,72 +438,23 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
           const currentSrc = img.currentSrc || img.src;
           if (!currentSrc) return;
 
-          // 1. If image is already fully loaded in DOM, try direct canvas draw with square crop
-          if (img.complete && img.naturalWidth > 0) {
-            try {
-              const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
-              const nw = img.naturalWidth;
-              const nh = img.naturalHeight;
-              const targetW = isAvatar ? 160 : nw;
-              const targetH = isAvatar ? 160 : nh;
+          const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
 
-              const cvs = document.createElement('canvas');
-              cvs.width = targetW;
-              cvs.height = targetH;
-              const ctx = cvs.getContext('2d');
-              if (ctx) {
-                if (isAvatar) {
-                  // Center-crop to square
-                  let sx = 0, sy = 0, sw = nw, sh = nh;
-                  if (nw > nh) {
-                    sw = nh;
-                    sx = (nw - nh) / 2;
-                  } else if (nh > nw) {
-                    sh = nw;
-                    sy = (nh - nw) / 2;
-                  }
-                  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
-                } else {
-                  ctx.drawImage(img, 0, 0, targetW, targetH);
-                }
-                const dataUrl = cvs.toDataURL('image/png');
-                if (dataUrl && dataUrl.length > 200) {
-                  img.src = dataUrl;
-                  return;
-                }
-              }
-            } catch {
-              // Canvas draw might fail if cross-origin tainted, proceed to fetch
-            }
-          }
-
-          // 2. Fetch via proxy or directly
-          let rawUrl = currentSrc;
-          if (currentSrc.includes('/api/image-proxy?url=')) {
-            try {
-              const u = new URL(currentSrc, window.location.origin);
-              rawUrl = u.searchParams.get('url') || currentSrc;
-            } catch {
-              rawUrl = currentSrc;
-            }
-          }
-
-          const urlsToTry = [
-            getProxiedImageUrl(rawUrl),
-            rawUrl,
-            currentSrc
-          ];
-
+          // Always fetch clean blob through proxy if external to guarantee CORS headers
+          const proxyUrl = getProxiedImageUrl(currentSrc);
           let blob: Blob | null = null;
-          for (const u of urlsToTry) {
+          try {
+            const res = await fetch(proxyUrl, { mode: 'cors' });
+            if (res.ok) {
+              blob = await res.blob();
+            }
+          } catch {
+            // fallback to direct
             try {
-              const res = await fetch(u, { mode: 'cors' });
-              if (res && res.ok) {
-                blob = await res.blob();
-                if (blob && blob.size > 0) break;
-              }
+              const res = await fetch(currentSrc, { mode: 'cors' });
+              if (res.ok) blob = await res.blob();
             } catch {
-              // try next
+              // ignore
             }
           }
 
@@ -516,42 +467,49 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             });
 
             if (dataUrl) {
-              const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
-              if (isAvatar) {
-                const tempImg = new Image();
-                await new Promise<void>((resolve) => {
-                  tempImg.onload = () => resolve();
-                  tempImg.onerror = () => resolve();
-                  tempImg.src = dataUrl;
-                });
+              const tempImg = new Image();
+              await new Promise<void>((resolve) => {
+                tempImg.onload = () => resolve();
+                tempImg.onerror = () => resolve();
+                tempImg.src = dataUrl;
+              });
 
-                if (tempImg.naturalWidth > 0) {
-                  const nw = tempImg.naturalWidth;
-                  const nh = tempImg.naturalHeight;
-                  const cvs = document.createElement('canvas');
-                  cvs.width = 160;
-                  cvs.height = 160;
-                  const ctx = cvs.getContext('2d');
-                  if (ctx) {
-                    let sx = 0, sy = 0, sw = nw, sh = nh;
-                    if (nw > nh) {
-                      sw = nh;
-                      sx = (nw - nh) / 2;
-                    } else if (nh > nw) {
-                      sh = nw;
-                      sy = (nh - nw) / 2;
+              if (tempImg.naturalWidth > 0 && tempImg.naturalHeight > 0) {
+                const nw = tempImg.naturalWidth;
+                const nh = tempImg.naturalHeight;
+                const cvs = document.createElement('canvas');
+                const targetSize = isAvatar ? 200 : nw;
+                cvs.width = targetSize;
+                cvs.height = isAvatar ? 200 : nh;
+                const ctx = cvs.getContext('2d');
+                if (ctx) {
+                  if (isAvatar) {
+                    // Center-crop to 1:1 square
+                    const size = Math.min(nw, nh);
+                    const sx = (nw - size) / 2;
+                    const sy = (nh - size) / 2;
+                    ctx.drawImage(tempImg, sx, sy, size, size, 0, 0, 200, 200);
+                  } else {
+                    ctx.drawImage(tempImg, 0, 0, nw, nh);
+                  }
+                  const croppedDataUrl = cvs.toDataURL('image/png');
+                  if (croppedDataUrl && croppedDataUrl.length > 200) {
+                    if (!img.getAttribute('data-original-src')) {
+                      img.setAttribute('data-original-src', img.src);
                     }
-                    ctx.drawImage(tempImg, sx, sy, sw, sh, 0, 0, 160, 160);
-                    img.src = cvs.toDataURL('image/png');
+                    img.src = croppedDataUrl;
                     return;
                   }
                 }
+              }
+              if (!img.getAttribute('data-original-src')) {
+                img.setAttribute('data-original-src', img.src);
               }
               img.src = dataUrl;
             }
           }
         } catch (e) {
-          console.warn('Image prep warning:', e);
+          console.warn('Image prep error:', e);
         }
       })
     );
@@ -680,29 +638,35 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             });
           }
 
-          // Ensure all avatar images in clonedDoc stay strictly 76px x 76px circular
+          // Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
           const clonedImgs = clonedEl.querySelectorAll('img');
           clonedImgs.forEach(cImg => {
             if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
-              cImg.style.width = '76px';
-              cImg.style.height = '76px';
-              cImg.style.minWidth = '76px';
-              cImg.style.minHeight = '76px';
-              cImg.style.maxWidth = '76px';
-              cImg.style.maxHeight = '76px';
+              cImg.style.width = '74px';
+              cImg.style.height = '74px';
+              cImg.style.minWidth = '74px';
+              cImg.style.minHeight = '74px';
+              cImg.style.maxWidth = '74px';
+              cImg.style.maxHeight = '74px';
               cImg.style.borderRadius = '50%';
               cImg.style.objectFit = 'cover';
+              cImg.style.aspectRatio = '1 / 1';
               cImg.style.display = 'block';
 
               if (cImg.parentElement) {
-                cImg.parentElement.style.width = '76px';
-                cImg.parentElement.style.height = '76px';
-                cImg.parentElement.style.minWidth = '76px';
-                cImg.parentElement.style.minHeight = '76px';
-                cImg.parentElement.style.maxWidth = '76px';
-                cImg.parentElement.style.maxHeight = '76px';
+                cImg.parentElement.style.width = '80px';
+                cImg.parentElement.style.height = '80px';
+                cImg.parentElement.style.minWidth = '80px';
+                cImg.parentElement.style.minHeight = '80px';
+                cImg.parentElement.style.maxWidth = '80px';
+                cImg.parentElement.style.maxHeight = '80px';
                 cImg.parentElement.style.borderRadius = '50%';
+                cImg.parentElement.style.aspectRatio = '1 / 1';
                 cImg.parentElement.style.overflow = 'hidden';
+                cImg.parentElement.style.boxSizing = 'border-box';
+                cImg.parentElement.style.display = 'flex';
+                cImg.parentElement.style.alignItems = 'center';
+                cImg.parentElement.style.justifyContent = 'center';
               }
             }
           });
@@ -725,6 +689,14 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       });
     } finally {
       element.style.transform = originalTransform;
+      const imgs = Array.from(element.querySelectorAll<HTMLImageElement>('img[data-original-src]'));
+      imgs.forEach(img => {
+        const orig = img.getAttribute('data-original-src');
+        if (orig) {
+          img.src = orig;
+          img.removeAttribute('data-original-src');
+        }
+      });
     }
   };
 
@@ -890,22 +862,44 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
         </div>
 
         {/* Outer Card Wrapper */}
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center w-[200px] min-w-[200px] max-w-[200px]">
           
-          {/* Avatar Container Circle */}
+          {/* Avatar Container Circle - 80px Fixed Perfect Circle */}
           <div
-            className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden shadow-md flex items-center justify-center shrink-0 relative"
+            className="w-20 h-20 rounded-full overflow-hidden shadow-md flex items-center justify-center shrink-0 relative"
             style={{
+              width: '80px',
+              height: '80px',
+              minWidth: '80px',
+              minHeight: '80px',
+              maxWidth: '80px',
+              maxHeight: '80px',
+              aspectRatio: '1 / 1',
               backgroundColor: '#f8fafc',
               borderColor: isTopLevel ? '#0288d1' : badgeBgColor,
               borderWidth: '3px',
-              borderStyle: 'solid'
+              borderStyle: 'solid',
+              borderRadius: '50%',
+              boxSizing: 'border-box'
             }}
           >
             <img
-              src={displayPhoto}
+              src={getProxiedImageUrl(displayPhoto)}
               alt={node.fullName}
-              className="w-full h-full object-cover object-center"
+              crossOrigin="anonymous"
+              style={{
+                width: '100%',
+                height: '100%',
+                minWidth: '100%',
+                minHeight: '100%',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center',
+                borderRadius: '50%',
+                aspectRatio: '1 / 1',
+                display: 'block'
+              }}
               onError={e => {
                 const img = e.currentTarget;
                 const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(node.nickname || node.fullName || 'staff')}`;
@@ -936,13 +930,17 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
 
           {/* Name Plate Box matching image dark blue styling */}
           <div
-            className="mt-1.5 rounded-xl px-3.5 py-1.5 shadow-md flex flex-col items-center justify-center text-center min-w-[155px] max-w-[210px] transition-colors"
+            className="mt-1.5 rounded-xl px-3.5 py-1.5 shadow-md flex flex-col items-center justify-center text-center w-[190px] min-w-[190px] max-w-[190px] transition-colors"
             style={{
+              width: '190px',
+              minWidth: '190px',
+              maxWidth: '190px',
               backgroundColor: '#0c2f5e',
               borderColor: '#184c8a',
               borderWidth: '1px',
               borderStyle: 'solid',
-              color: '#ffffff'
+              color: '#ffffff',
+              boxSizing: 'border-box'
             }}
           >
             <span className="font-th font-extrabold text-xs md:text-sm leading-tight break-words text-center w-full" style={{ color: '#ffffff' }}>
@@ -1391,7 +1389,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             </div>
 
             {/* LEVEL 3: 3 Main Branches (UCC, Center, UQC) */}
-            <div className="grid grid-cols-3 gap-6 w-full pt-1">
+            <div id="org-chart-branches" className="grid grid-cols-3 gap-6 w-full pt-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
 
               {/* BRANCH 1: Team UCC (Left) */}
               <div

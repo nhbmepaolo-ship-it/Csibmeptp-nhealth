@@ -266,7 +266,7 @@ export const INITIAL_VOTES: VoteRecord[] = [
     timestamp: '2026-08-26 09:12:00',
     voter: '612366',
     category: 'สุดยอดนักทำงานเป็นทีม (Team Player)',
-    nominee: 'Salisa Saelim',
+    nominee: 'Suphawat Ketman',
     voteMonth: '2026-08'
   }
 ];

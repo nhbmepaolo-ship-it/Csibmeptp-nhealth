@@ -213,12 +213,12 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
     },
     {
       id: 'org-15',
-      employeeId: 'sheet-emp-620331',
-      fullName: 'Salisa Saelim',
-      nickname: 'ษา',
+      employeeId: 'sheet-emp-627826',
+      fullName: 'Pichaya Narapong',
+      nickname: 'ไอซ์',
       roleTitle: 'Equipment Pool',
       badgeLevel: 'Staff',
-      photoUrl: 'https://img1.pic.in.th/images/6596ac2053383a160.png',
+      photoUrl: 'https://img1.pic.in.th/images/49d801c9-c50d-4ac0-b054-85b551c86d98.png',
       tags: [
         { id: 't-20', text: 'Equipment Pool', color: 'blue' }
       ],

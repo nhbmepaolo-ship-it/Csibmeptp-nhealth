@@ -323,6 +323,23 @@ export class StorageService {
         if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
           let hasChanges = false;
           parsed.nodes = parsed.nodes.map((node: any) => {
+            // Replace resigned employee Salisa Saelim with active employee Pichaya Narapong
+            if (node.fullName?.includes('Salisa') || node.fullName?.includes('ศลิษา') || node.employeeId?.includes('620331')) {
+              hasChanges = true;
+              return {
+                id: node.id || 'org-15',
+                employeeId: 'sheet-emp-627826',
+                fullName: 'Pichaya Narapong',
+                nickname: 'ไอซ์',
+                roleTitle: 'Equipment Pool',
+                badgeLevel: 'Staff',
+                photoUrl: 'https://img1.pic.in.th/images/49d801c9-c50d-4ac0-b054-85b551c86d98.png',
+                tags: [{ id: 't-20', text: 'Equipment Pool', color: 'blue' }],
+                branchId: node.branchId || 'uqc',
+                order: node.order || 5
+              };
+            }
+
             let currentPhoto = node.photoUrl || '';
             const healed = currentPhoto
               .replace('https://img2.pic.in.th/images/BME_563770..045756.png', 'https://img2.pic.in.th/BME_563770..045756.png')
@@ -806,12 +823,25 @@ export class StorageService {
       }
     }
 
-    // Filter out old mock records with fake users
+    // Filter out old mock records with fake users or resigned nominees
+    const employees = this.getEmployees();
+    const resignedNames = new Set(
+      employees.filter(e => e.status === 'resigned' || (e.status as string) === 'inactive')
+        .flatMap(e => [
+          e.fullName.toLowerCase(),
+          `${e.fullName} (${e.nickname})`.toLowerCase(),
+          e.nickname.toLowerCase(),
+          e.username.toLowerCase()
+        ])
+    );
+
     const filtered = list.filter(v => {
       const nominee = (v.nominee || '').toLowerCase();
       const voter = (v.voter || '').toLowerCase();
       if (nominee.includes('วิไล') || nominee.includes('สุดา') || nominee.includes('นรินทร์') || nominee.includes('พรทิพย์')) return false;
       if (voter.startsWith('emp_a') || voter.startsWith('emp_nan') || voter.startsWith('emp_jiw') || voter.startsWith('emp_name') || voter.startsWith('emp_da')) return false;
+      // Exclude votes where nominee is a resigned employee (e.g. Salisa Saelim)
+      if (resignedNames.has(nominee) || nominee.includes('salisa') || nominee.includes('ศลิษา') || nominee.includes('620331')) return false;
       return true;
     });
 
@@ -836,17 +866,20 @@ export class StorageService {
     const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName === voter);
     const nomineeEmp = employees.find(e => e.fullName === nominee || `${e.fullName} (${e.nickname})` === nominee);
 
+    if (nomineeEmp) {
+      if (nomineeEmp.status === 'resigned' || nomineeEmp.status === 'inactive') {
+        return {
+          success: false,
+          message: `พนักงาน ${nomineeEmp.fullName} (${nomineeEmp.nickname}) พ้นสภาพการเป็นพนักงาน/ลาออกแล้ว ไม่สามารถลงคะแนนโหวตได้`
+        };
+      }
+    }
+
     if (voterEmp && nomineeEmp) {
       if (voterEmp.id === nomineeEmp.id || voterEmp.username.toLowerCase() === nomineeEmp.username.toLowerCase()) {
         return {
           success: false,
           message: 'ไม่สามารถลงคะแนนโหวตให้ตนเองได้'
-        };
-      }
-      if (voterEmp.club && nomineeEmp.club && voterEmp.club.trim().toLowerCase() === nomineeEmp.club.trim().toLowerCase()) {
-        return {
-          success: false,
-          message: `ไม่สามารถลงคะแนนโหวตให้เพื่อนพนักงานในทีม/ชมรมเดียวกัน (${voterEmp.club}) ได้`
         };
       }
     }

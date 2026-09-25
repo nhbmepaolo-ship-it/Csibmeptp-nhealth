@@ -133,20 +133,38 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
     return map;
   }, [employees]);
 
-  // Candidates available for currentUser to vote for (cannot vote for oneself or members in the same team/club)
+  // Candidates available for currentUser to vote for (cannot vote for oneself, and CANNOT vote for resigned/inactive employees in that month)
   const eligibleCandidates = useMemo(() => {
-    if (!currentUser) return employees;
+    if (!employees || employees.length === 0) return [];
     return employees.filter(emp => {
-      const isSelf = emp.username.trim().toLowerCase() === currentUser.username.trim().toLowerCase() ||
-                     emp.fullName.trim() === currentUser.fullName.trim();
-      if (isSelf) return false;
-
-      if (emp.club && currentUser.club && emp.club.trim().toLowerCase() === currentUser.club.trim().toLowerCase()) {
+      // 1. Exclude resigned and inactive employees
+      if (emp.status === 'resigned' || emp.status === 'inactive') {
         return false;
       }
+
+      // Check if employee has resignation month specified
+      if ((emp as any).resignedMonth && targetVoteMonth >= (emp as any).resignedMonth) {
+        return false;
+      }
+
+      if (!currentUser) return true;
+
+      // 2. Cannot vote for oneself
+      const isSelf = emp.username.trim().toLowerCase() === currentUser.username.trim().toLowerCase() ||
+                     emp.fullName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase();
+      if (isSelf) return false;
+
+      // Colleague voting is open to all active employees (no club restriction)
       return true;
     });
-  }, [employees, currentUser]);
+  }, [employees, currentUser, targetVoteMonth]);
+
+  // Reset selectedNominee if candidate becomes ineligible
+  useEffect(() => {
+    if (selectedNominee && !eligibleCandidates.some(c => c.fullName === selectedNominee)) {
+      setSelectedNominee('');
+    }
+  }, [eligibleCandidates, selectedNominee]);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -500,17 +518,17 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
                       className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold outline-none focus:border-indigo-500"
                       required
                     >
-                      <option value="">-- เลือกเพื่อนพนักงาน (ต่างทีม/ต่างชมรม) --</option>
+                      <option value="">-- เลือกพนักงานที่ต้องการโหวตให้ --</option>
                       {eligibleCandidates.map((emp, idx) => (
                         <option key={`${emp.id || emp.username || 'emp'}-${idx}`} value={emp.fullName}>
-                          {emp.fullName} ({emp.nickname}) - {emp.club}
+                          {emp.fullName} ({emp.nickname})
                         </option>
                       ))}
                     </select>
                     {currentUser && (
                       <p className="text-[11px] text-amber-300/90 mt-1.5 flex items-center gap-1.5">
-                        <i className="fa-solid fa-ban text-amber-400"></i>
-                        <span>เงื่อนไขการโหวต: ไม่สามารถโหวตให้ตนเอง หรือสมาชิกในทีม/ชมรมเดียวกัน ({currentUser.club || 'ไม่มีชมรม'}) ได้</span>
+                        <i className="fa-solid fa-circle-info text-amber-400"></i>
+                        <span>เงื่อนไขการโหวต: ไม่สามารถโหวตให้ตนเอง หรือพนักงานที่ลาออกแล้วในรอบเดือนนั้นได้</span>
                       </p>
                     )}
                   </div>

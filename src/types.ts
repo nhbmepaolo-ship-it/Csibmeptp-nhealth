@@ -16,6 +16,8 @@ export interface Employee {
   status: 'active' | 'resigned' | 'inactive';
   isAdmin: boolean;
   dept?: string;
+  resignedMonth?: string;
+  resignedDate?: string;
 }
 
 export interface CSIRecord {
