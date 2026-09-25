@@ -784,7 +784,7 @@ export class StorageService {
     try {
       const syncPromise = this.syncDataToGoogleSheet('add_csi', payload);
       const timeoutPromise = new Promise<{ success: boolean; message: string }>((resolve) =>
-        setTimeout(() => resolve({ success: true, message: 'บันทึกข้อมูลเรียบร้อยแล้ว (ระบบกำลังซิงค์ลง Google Sheet)' }), 4500)
+        setTimeout(() => resolve({ success: true, message: 'บันทึกข้อมูลเรียบร้อยแล้ว (ระบบกำลังซิงค์ลง Google Sheet)' }), 15000)
       );
       return await Promise.race([syncPromise, timeoutPromise]);
     } catch (e: any) {
@@ -1918,10 +1918,10 @@ export class StorageService {
         return lower.includes('<!doctype') || lower.includes('<html') || lower.includes('not_found') || lower.includes('could not be found') || lower.includes('page not found') || lower.includes('404') || lower.includes('sin1::');
       };
 
-      // 1. Try server proxy route first with 5s timeout
+      // 1. Try server proxy route first with 25s timeout
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
+        const timer = setTimeout(() => controller.abort(), 25000);
         const res = await fetch('/api/sync-sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1949,10 +1949,10 @@ export class StorageService {
         console.info('Backend proxy /api/sync-sheets unreachable or timed out, using direct connection:', e?.message || e);
       }
 
-      // 2. Direct request to Google Apps Script with 4s timeout
+      // 2. Direct request to Google Apps Script with 20s timeout
       try {
         const directController = new AbortController();
-        const directTimer = setTimeout(() => directController.abort(), 4000);
+        const directTimer = setTimeout(() => directController.abort(), 20000);
         const directRes = await fetch(gasUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1976,10 +1976,10 @@ export class StorageService {
         console.info('Direct CORS request to Google Apps Script skipped or timed out:', directErr?.message || directErr);
       }
 
-      // 3. Fallback no-cors direct submission with 3s timeout
+      // 3. Fallback no-cors direct submission with 10s timeout
       try {
         const noCorsController = new AbortController();
-        const noCorsTimer = setTimeout(() => noCorsController.abort(), 3000);
+        const noCorsTimer = setTimeout(() => noCorsController.abort(), 10000);
         await fetch(gasUrl, {
           method: 'POST',
           mode: 'no-cors',

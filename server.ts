@@ -992,7 +992,7 @@ async function startServer() {
 
       const sendToGas = async (url: string, p: any) => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 7000);
+        const timer = setTimeout(() => controller.abort(), 30000);
         try {
           const response = await fetch(url, {
             method: 'POST',
@@ -1006,7 +1006,11 @@ async function startServer() {
           return { ok: response.ok, text };
         } catch (fetchErr: any) {
           clearTimeout(timer);
-          console.warn('sendToGas fetch error or timed out:', fetchErr.message || fetchErr);
+          if (fetchErr.name === 'AbortError' || String(fetchErr.message || fetchErr).includes('aborted')) {
+            console.warn('sendToGas timed out after 30s for:', url);
+            return { ok: false, text: 'TIMEOUT: Google Apps Script timed out after 30s' };
+          }
+          console.warn('sendToGas fetch error:', fetchErr.message || fetchErr);
           return { ok: false, text: `ERROR: ${fetchErr.message || fetchErr}` };
         }
       };
