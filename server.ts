@@ -114,7 +114,7 @@ function formatActivityDate(dateInput?: string | Date | number): string {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -683,14 +683,28 @@ async function startServer() {
             if (voteRows.length > 1) {
               for (let i = 1; i < voteRows.length; i++) {
                 const r = voteRows[i];
-                if (!r || r.length < 4) continue;
+                if (!r || r.length < 3) continue;
+                const ts = (r[0] || '').trim();
+                let vMonth = (r[4] || '').trim();
+                if (!vMonth && ts) {
+                  if (ts.includes('/')) {
+                    const parts = ts.split(/[\s,]+/)[0].split('/');
+                    if (parts.length === 3) {
+                      let y = parseInt(parts[2], 10);
+                      if (y > 2500) y -= 543;
+                      vMonth = `${y}-${parts[1].padStart(2, '0')}`;
+                    }
+                  } else if (ts.includes('-')) {
+                    vMonth = ts.substring(0, 7);
+                  }
+                }
                 votes.push({
                   id: `vote-${i}`,
-                  timestamp: r[0] || '',
-                  voter: r[1] || '',
-                  category: r[2] || '',
-                  nominee: r[3] || '',
-                  voteMonth: r[4] || ''
+                  timestamp: ts,
+                  voter: (r[1] || '').trim(),
+                  category: (r[2] || '').trim(),
+                  nominee: (r[3] || '').trim(),
+                  voteMonth: vMonth || ''
                 });
               }
             }
@@ -1149,18 +1163,28 @@ async function startServer() {
   });
 
   // Vite middleware for development vs static serve for production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
+  const distPath = path.join(process.cwd(), 'dist');
+  if (process.env.NODE_ENV === 'production') {
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  } else {
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.warn('Vite dev middleware failed, attempting static serve from dist:', viteErr);
+      if (fs.existsSync(path.join(distPath, 'index.html'))) {
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(distPath, 'index.html'));
+        });
+      }
+    }
   }
 
   app.listen(PORT, '0.0.0.0', () => {

@@ -893,8 +893,10 @@ export class StorageService {
     );
 
     const filtered = list.filter(v => {
+      if (!v) return false;
       const nominee = (v.nominee || '').toLowerCase();
       const voter = (v.voter || '').toLowerCase();
+      if (!nominee && !voter) return false;
       if (nominee.includes('วิไล') || nominee.includes('สุดา') || nominee.includes('นรินทร์') || nominee.includes('พรทิพย์')) return false;
       if (voter.startsWith('emp_a') || voter.startsWith('emp_nan') || voter.startsWith('emp_jiw') || voter.startsWith('emp_name') || voter.startsWith('emp_da')) return false;
       // Exclude votes where nominee is a resigned employee (e.g. Salisa Saelim)
@@ -952,7 +954,7 @@ export class StorageService {
 
     // Check if user already voted in this category and month, if so, update vote
     const existingIndex = votes.findIndex(
-      v => v.voter.toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
+      v => (v?.voter || '').toLowerCase() === userLower && v?.category === category && v?.voteMonth === voteMonth
     );
 
     if (existingIndex !== -1) {
@@ -1059,7 +1061,7 @@ export class StorageService {
     for (const cat of REQUIRED_CATEGORIES) {
       const nominee = categoryNominees[cat];
       const existingIndex = votes.findIndex(
-        v => v.voter.toLowerCase() === userLower && v.category === cat && v.voteMonth === voteMonth
+        v => (v?.voter || '').toLowerCase() === userLower && v?.category === cat && v?.voteMonth === voteMonth
       );
 
       if (existingIndex !== -1) {
@@ -1495,32 +1497,7 @@ export class StorageService {
       this.saveGoogleSheetId(sheetId);
     }
     try {
-      // 1. Sync directly with Google Apps Script Web App (get_all)
-      try {
-        const gasResult = await this.syncDataToGoogleSheet('get_all', {});
-        if (gasResult && (gasResult as any).data) {
-          const payload = (gasResult as any).data;
-          if (Array.isArray(payload.activities) && payload.activities.length > 0) {
-            this.saveActivities(payload.activities.map((a: any) => ({
-              ...a,
-              dateKey: a.timestamp ? a.timestamp.substring(0, 10) : (a.date || '')
-            })));
-          }
-          if (Array.isArray(payload.votes) && payload.votes.length > 0) {
-            this.saveVotes(payload.votes);
-          }
-          if (Array.isArray(payload.coaching) && payload.coaching.length > 0) {
-            this.saveCoachingRecords(payload.coaching);
-          }
-          if (payload.orgChart && payload.orgChart.nodes) {
-            this.saveOrgChart(payload.orgChart);
-          }
-        }
-      } catch (errGas) {
-        console.warn('Apps Script get_all sync notice:', errGas);
-      }
-
-      // 2. Sync CSI Responses & Staff from Sheet
+      // 1. Sync directly from Google Sheet tabs (CSI, Employees, Activities, Coaching, OrgChart, Votes)
       let data: any = null;
 
       try {
@@ -1544,6 +1521,25 @@ export class StorageService {
           totalFetched: 0,
           message: data?.message || 'ไม่สามารถเชื่อมต่อดึงข้อมูลจาก Google Sheet ได้ โปรดตรวจสอบว่าได้เปิดสิทธิ์แชร์ "ทุกคนที่มีลิงก์ดูได้"'
         };
+      }
+
+      // 2. Non-blocking Apps Script supplemental sync in background
+      const storedGasUrl = localStorage.getItem('csi_google_sheets_url');
+      if (storedGasUrl && storedGasUrl.includes('script.google.com')) {
+        this.syncDataToGoogleSheet('get_all', {}).then(gasResult => {
+          if (gasResult && (gasResult as any).data) {
+            const payload = (gasResult as any).data;
+            if (Array.isArray(payload.activities) && payload.activities.length > 0) {
+              this.saveActivities(payload.activities.map((a: any) => ({
+                ...a,
+                dateKey: a.timestamp ? a.timestamp.substring(0, 10) : (a.date || '')
+              })));
+            }
+            if (Array.isArray(payload.votes) && payload.votes.length > 0) {
+              this.saveVotes(payload.votes);
+            }
+          }
+        }).catch(() => {});
       }
 
       const fetchedCsi: CSIRecord[] = data.csiRecords || [];
@@ -1656,7 +1652,35 @@ export class StorageService {
 
       // Save Votes from Google Sheet (Tab Votes)
       if (Array.isArray(data.votes) && data.votes.length > 0) {
-        this.saveVotes(data.votes);
+        const cleanVotes = data.votes
+          .filter((v: any) => v && (v.voter || v.nominee))
+          .map((v: any) => {
+            const ts = (v.timestamp || '').trim();
+            let vMonth = (v.voteMonth || '').trim();
+            if (!vMonth && ts) {
+              if (ts.includes('/')) {
+                const parts = ts.split(/[\s,]+/)[0].split('/');
+                if (parts.length === 3) {
+                  let y = parseInt(parts[2], 10);
+                  if (y > 2500) y -= 543;
+                  vMonth = `${y}-${parts[1].padStart(2, '0')}`;
+                }
+              } else if (ts.includes('-')) {
+                vMonth = ts.substring(0, 7);
+              }
+            }
+            return {
+              id: v.id || ('vote-' + Math.random().toString(36).substring(2, 7)),
+              timestamp: ts,
+              voter: (v.voter || '').trim(),
+              category: (v.category || '').trim(),
+              nominee: (v.nominee || '').trim(),
+              voteMonth: vMonth || ''
+            };
+          });
+        if (cleanVotes.length > 0) {
+          this.saveVotes(cleanVotes);
+        }
       }
 
       this.saveGoogleSheetId(sheetId);
@@ -1677,7 +1701,7 @@ export class StorageService {
   }
 
   // Client-side fallback to parse Google Sheets CSV directly
-  private static async clientSideFetchGoogleSheet(sheetId: string): Promise<{ success: boolean; csiRecords?: CSIRecord[]; employees?: Employee[]; coachingRecords?: CoachingRecord[]; activities?: ActivityRecord[]; orgChart?: any; message?: string }> {
+  private static async clientSideFetchGoogleSheet(sheetId: string): Promise<{ success: boolean; csiRecords?: CSIRecord[]; employees?: Employee[]; coachingRecords?: CoachingRecord[]; activities?: ActivityRecord[]; orgChart?: any; votes?: VoteRecord[]; message?: string }> {
     try {
       const parseCSV = (text: string) => {
         const lines: string[][] = [];
@@ -2091,13 +2115,57 @@ export class StorageService {
         console.warn('Attempt to fetch Org Chart tab skipped:', e);
       }
 
+      // 6. Fetch Votes client-side
+      const votes: VoteRecord[] = [];
+      try {
+        const voteUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('Votes')}`;
+        const voteRes = await fetch(voteUrl);
+        if (voteRes.ok) {
+          const voteCsv = await voteRes.text();
+          if (voteCsv && !voteCsv.includes('google-signin') && !voteCsv.includes('<!DOCTYPE html>')) {
+            const voteRows = parseCSV(voteCsv);
+            if (voteRows.length > 1) {
+              for (let i = 1; i < voteRows.length; i++) {
+                const r = voteRows[i];
+                if (!r || r.length < 3) continue;
+                const ts = (r[0] || '').trim();
+                let vMonth = (r[4] || '').trim();
+                if (!vMonth && ts) {
+                  if (ts.includes('/')) {
+                    const parts = ts.split(/[\s,]+/)[0].split('/');
+                    if (parts.length === 3) {
+                      let y = parseInt(parts[2], 10);
+                      if (y > 2500) y -= 543;
+                      vMonth = `${y}-${parts[1].padStart(2, '0')}`;
+                    }
+                  } else if (ts.includes('-')) {
+                    vMonth = ts.substring(0, 7);
+                  }
+                }
+                votes.push({
+                  id: `vote-${i}`,
+                  timestamp: ts,
+                  voter: (r[1] || '').trim(),
+                  category: (r[2] || '').trim(),
+                  nominee: (r[3] || '').trim(),
+                  voteMonth: vMonth || ''
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Attempt to fetch Votes tab skipped:', e);
+      }
+
       return {
         success: true,
         csiRecords,
         employees,
         coachingRecords,
         activities,
-        orgChart
+        orgChart,
+        votes
       };
     } catch (e: any) {
       console.error('Client-side Google Sheet fetch error:', e);

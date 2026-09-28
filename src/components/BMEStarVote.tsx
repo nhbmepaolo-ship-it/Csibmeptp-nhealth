@@ -131,11 +131,13 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
 
   // Filtered votes by month / year
   const filteredVotes = useMemo(() => {
-    return votes.filter(v => {
+    return (votes || []).filter(v => {
+      if (!v) return false;
+      const vMonth = v.voteMonth || '';
       if (selectedMonthKey) {
-        return v.voteMonth === selectedMonthKey;
+        return vMonth === selectedMonthKey;
       }
-      return v.voteMonth.startsWith(selectedYear.toString());
+      return vMonth.startsWith(selectedYear.toString());
     });
   }, [votes, selectedMonthKey, selectedYear]);
 
@@ -145,6 +147,7 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
     CATEGORIES.forEach(cat => { summary[cat] = {}; });
 
     filteredVotes.forEach(v => {
+      if (!v || !v.category || !v.nominee) return;
       if (!summary[v.category]) summary[v.category] = {};
       summary[v.category][v.nominee] = (summary[v.category][v.nominee] || 0) + 1;
     });
@@ -156,7 +159,9 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
   const overallRanking = useMemo(() => {
     const totals: { [nominee: string]: number } = {};
     filteredVotes.forEach(v => {
-      totals[v.nominee] = (totals[v.nominee] || 0) + 1;
+      if (v && v.nominee) {
+        totals[v.nominee] = (totals[v.nominee] || 0) + 1;
+      }
     });
     return Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [filteredVotes]);
@@ -176,6 +181,7 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
   const eligibleCandidates = useMemo(() => {
     if (!employees || employees.length === 0) return [];
     return employees.filter(emp => {
+      if (!emp) return false;
       // 1. Exclude resigned and inactive employees
       if (emp.status === 'resigned' || emp.status === 'inactive') {
         return false;
@@ -189,8 +195,8 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
       if (!currentUser) return true;
 
       // 2. Cannot vote for oneself
-      const isSelf = emp.username.trim().toLowerCase() === currentUser.username.trim().toLowerCase() ||
-                     emp.fullName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase();
+      const isSelf = ((emp.username || '').trim().toLowerCase() === (currentUser.username || '').trim().toLowerCase()) ||
+                     ((emp.fullName || '').trim().toLowerCase() === (currentUser.fullName || '').trim().toLowerCase());
       if (isSelf) return false;
 
       // Colleague voting is open to all active employees (no club restriction)
@@ -200,17 +206,18 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
 
   // Load existing votes by currentUser for targetVoteMonth
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || !currentUser.username) {
       setCategoryVotes({});
       return;
     }
-    const userVotes = votes.filter(
-      v => v.voter.toLowerCase() === currentUser.username.toLowerCase() && v.voteMonth === targetVoteMonth
+    const currentUsernameLower = (currentUser.username || '').trim().toLowerCase();
+    const userVotes = (votes || []).filter(
+      v => v && v.voter && (v.voter || '').trim().toLowerCase() === currentUsernameLower && (v.voteMonth || '') === targetVoteMonth
     );
     const initialMap: Record<string, string> = {};
     CATEGORIES.forEach(cat => {
       const match = userVotes.find(v => v.category === cat);
-      if (match) {
+      if (match && match.nominee) {
         initialMap[cat] = match.nominee;
       }
     });
@@ -883,12 +890,12 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {filteredVotes.map((v, idx) => (
-                    <tr key={`${v.id || 'vote'}-${idx}`} className="hover:bg-slate-800/40">
-                      <td className="p-3 font-mono text-[11px] text-slate-400">{v.timestamp}</td>
-                      <td className="p-3 font-bold text-white">{v.voter}</td>
-                      <td className="p-3 text-purple-300">{v.category}</td>
-                      <td className="p-3 font-bold text-indigo-300">{v.nominee}</td>
-                      <td className="p-3 font-bold text-amber-300">{v.voteMonth}</td>
+                    <tr key={`${v?.id || 'vote'}-${idx}`} className="hover:bg-slate-800/40">
+                      <td className="p-3 font-mono text-[11px] text-slate-400">{v?.timestamp || '-'}</td>
+                      <td className="p-3 font-bold text-white">{v?.voter || '-'}</td>
+                      <td className="p-3 text-purple-300">{v?.category || '-'}</td>
+                      <td className="p-3 font-bold text-indigo-300">{v?.nominee || '-'}</td>
+                      <td className="p-3 font-bold text-amber-300">{v?.voteMonth || '-'}</td>
                     </tr>
                   ))}
                   {filteredVotes.length === 0 && (
