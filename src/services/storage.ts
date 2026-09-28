@@ -291,7 +291,7 @@ export class StorageService {
       const data = localStorage.getItem(KEYS.ORG_CHART);
       const employees = this.getEmployees().filter(e => e.status !== 'resigned');
 
-      const cleanStr = (s?: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const cleanStr = (s?: any) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
       const findEmp = (node: any) => {
         const rawId = (node.employeeId || '').trim();
@@ -424,7 +424,17 @@ export class StorageService {
               }
             }
 
-            return { ...node, photoUrl: currentPhoto };
+            // Backfill default jobDetails if missing
+            let jobDetails = node.jobDetails;
+            if (!jobDetails) {
+              const initNode = INITIAL_ORG_CHART.nodes.find(n => n.id === node.id || n.fullName === node.fullName || (n.nickname && n.nickname === node.nickname));
+              if (initNode?.jobDetails) {
+                jobDetails = initNode.jobDetails;
+                hasChanges = true;
+              }
+            }
+
+            return { ...node, photoUrl: currentPhoto, jobDetails };
           });
           if (hasChanges) {
             // Persist healed photo URLs locally without triggering remote sheet sync
@@ -519,21 +529,52 @@ export class StorageService {
   }
 
   // Status Overrides Helper
-  static getStatusOverrides(): Record<string, 'active' | 'resigned'> {
+  static getStatusOverrides(): Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }> {
     try {
       const data = localStorage.getItem('csi_bme_emp_status_overrides_v2');
-      return data ? JSON.parse(data) : {};
+      if (!data) return {};
+      const parsed = JSON.parse(data);
+      const normalized: Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }> = {};
+      for (const [key, val] of Object.entries(parsed)) {
+        if (typeof val === 'string') {
+          normalized[key] = { status: val as 'active' | 'resigned' };
+        } else if (val && typeof val === 'object') {
+          normalized[key] = val as { status: 'active' | 'resigned'; resignedMonth?: string };
+        }
+      }
+      return normalized;
     } catch {
       return {};
     }
   }
 
-  static saveStatusOverrides(overrides: Record<string, 'active' | 'resigned'>): void {
+  static saveStatusOverrides(overrides: Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }>): void {
     try {
       localStorage.setItem('csi_bme_emp_status_overrides_v2', JSON.stringify(overrides));
     } catch (e) {
       console.error('Failed to save status overrides:', e);
     }
+  }
+
+  static isEmployeeActiveInMonth(emp: Employee, targetMonthKey?: string): boolean {
+    if (!emp) return false;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const month = (targetMonthKey || currentMonthKey).trim();
+
+    if (emp.status === 'resigned' || (emp.status as string) === 'inactive') {
+      if (emp.resignedMonth && emp.resignedMonth.trim() !== '') {
+        // If query month is earlier than the resignation month, employee was active
+        return month < emp.resignedMonth.trim();
+      }
+      return false;
+    }
+
+    if (emp.resignedMonth && emp.resignedMonth.trim() !== '' && month >= emp.resignedMonth.trim()) {
+      return false;
+    }
+
+    return true;
   }
 
   // Employees
@@ -620,16 +661,22 @@ export class StorageService {
         continue;
       }
 
-      const uUpper = (emp.username || '').trim().toUpperCase();
-      const uKey = (emp.username || emp.id || '').toLowerCase();
-      const initialMatch = INITIAL_EMPLOYEES.find(e => (e.username && e.username.toLowerCase() === uKey) || (e.fullName && cleanFull && e.fullName.toLowerCase() === cleanFull.toLowerCase()));
+      const uUpper = String(emp.username || '').trim().toUpperCase();
+      const uKey = String(emp.username || emp.id || '').toLowerCase();
+      const initialMatch = INITIAL_EMPLOYEES.find(e => (e.username && String(e.username).toLowerCase() === uKey) || (e.fullName && cleanFull && String(e.fullName).toLowerCase() === cleanFull.toLowerCase()));
       let baseStatus = emp.status || 'active';
+      let baseResignedMonth = emp.resignedMonth || initialMatch?.resignedMonth;
       if (initialMatch && (initialMatch.status === 'resigned' || (initialMatch.status as string) === 'inactive') && !statusOverrides[uKey]) {
         baseStatus = 'resigned';
+        if (!baseResignedMonth) baseResignedMonth = initialMatch.resignedMonth || '2026-08';
       }
-      const finalStatus = statusOverrides[uKey] || baseStatus;
+      const override = statusOverrides[uKey];
+      const finalStatus = (typeof override === 'string' ? override : override?.status) || baseStatus;
+      const finalResignedMonth = (override && typeof override === 'object' && override.resignedMonth)
+        ? override.resignedMonth
+        : (emp.resignedMonth || baseResignedMonth);
 
-      if (emp.status !== finalStatus) {
+      if (emp.status !== finalStatus || emp.resignedMonth !== finalResignedMonth) {
         hasChanges = true;
       }
 
@@ -694,6 +741,7 @@ export class StorageService {
       cleanedList.push({
         ...emp,
         status: finalStatus,
+        resignedMonth: finalStatus === 'resigned' ? finalResignedMonth : undefined,
         nickname: updatedNick,
         fullName: updatedFull,
         password: updatedPass,
@@ -742,11 +790,28 @@ export class StorageService {
 
     list[idx] = { ...list[idx], ...updates };
 
-    if (updates.status) {
+    if (updates.status !== undefined || updates.resignedMonth !== undefined) {
       const overrides = this.getStatusOverrides();
-      const uKey = (list[idx].username || list[idx].id || '').toLowerCase();
+      const uKey = String(list[idx].username || list[idx].id || '').toLowerCase();
       if (uKey) {
-        overrides[uKey] = updates.status === 'inactive' ? 'resigned' : updates.status;
+        const currentSt = updates.status !== undefined
+          ? (updates.status === 'inactive' ? 'resigned' : updates.status)
+          : (list[idx].status || 'active');
+
+        let currentMonth = updates.resignedMonth;
+        if (currentSt === 'resigned' && !currentMonth) {
+          const now = new Date();
+          currentMonth = list[idx].resignedMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        } else if (currentSt === 'active') {
+          currentMonth = undefined;
+        }
+
+        overrides[uKey] = {
+          status: currentSt as 'active' | 'resigned',
+          resignedMonth: currentMonth
+        };
+        list[idx].status = currentSt as 'active' | 'resigned';
+        list[idx].resignedMonth = currentMonth;
         this.saveStatusOverrides(overrides);
       }
     }
@@ -874,28 +939,40 @@ export class StorageService {
       list = INITIAL_VOTES;
     } else {
       try {
-        list = JSON.parse(data);
+        const parsed = JSON.parse(data);
+        list = Array.isArray(parsed) ? parsed : INITIAL_VOTES;
       } catch {
         list = INITIAL_VOTES;
       }
     }
+
+    // Ensure all voter/nominee fields are strings
+    list = (list || []).map((v: any) => ({
+      ...v,
+      id: String(v?.id || ('vote-' + Math.random().toString(36).substring(2, 7))),
+      voter: String(v?.voter ?? '').trim(),
+      category: String(v?.category ?? '').trim(),
+      nominee: String(v?.nominee ?? '').trim(),
+      voteMonth: String(v?.voteMonth ?? '').trim(),
+      timestamp: String(v?.timestamp ?? '').trim()
+    }));
 
     // Filter out old mock records with fake users or resigned nominees
     const employees = this.getEmployees();
     const resignedNames = new Set(
       employees.filter(e => e.status === 'resigned' || (e.status as string) === 'inactive')
         .flatMap(e => [
-          e.fullName.toLowerCase(),
+          String(e.fullName || '').toLowerCase(),
           `${e.fullName} (${e.nickname})`.toLowerCase(),
-          e.nickname.toLowerCase(),
-          e.username.toLowerCase()
+          String(e.nickname || '').toLowerCase(),
+          String(e.username || '').toLowerCase()
         ])
     );
 
     const filtered = list.filter(v => {
       if (!v) return false;
-      const nominee = (v.nominee || '').toLowerCase();
-      const voter = (v.voter || '').toLowerCase();
+      const nominee = String(v.nominee || '').toLowerCase();
+      const voter = String(v.voter || '').toLowerCase();
       if (!nominee && !voter) return false;
       if (nominee.includes('วิไล') || nominee.includes('สุดา') || nominee.includes('นรินทร์') || nominee.includes('พรทิพย์')) return false;
       if (voter.startsWith('emp_a') || voter.startsWith('emp_nan') || voter.startsWith('emp_jiw') || voter.startsWith('emp_name') || voter.startsWith('emp_da')) return false;
@@ -913,7 +990,16 @@ export class StorageService {
   }
 
   static saveVotes(votes: VoteRecord[]): void {
-    localStorage.setItem(KEYS.VOTES, JSON.stringify(votes));
+    const sanitized = (votes || []).map((v: any) => ({
+      ...v,
+      id: String(v?.id || ('vote-' + Math.random().toString(36).substring(2, 7))),
+      voter: String(v?.voter ?? '').trim(),
+      category: String(v?.category ?? '').trim(),
+      nominee: String(v?.nominee ?? '').trim(),
+      voteMonth: String(v?.voteMonth ?? '').trim(),
+      timestamp: String(v?.timestamp ?? '').trim()
+    }));
+    localStorage.setItem(KEYS.VOTES, JSON.stringify(sanitized));
   }
 
   static addVote(voter: string, category: string, nominee: string, voteMonth: string): { success: boolean; message: string; monthKey?: string } {
@@ -954,7 +1040,7 @@ export class StorageService {
 
     // Check if user already voted in this category and month, if so, update vote
     const existingIndex = votes.findIndex(
-      v => (v?.voter || '').toLowerCase() === userLower && v?.category === category && v?.voteMonth === voteMonth
+      v => String(v?.voter || '').toLowerCase() === userLower && v?.category === category && v?.voteMonth === voteMonth
     );
 
     if (existingIndex !== -1) {
@@ -1061,7 +1147,7 @@ export class StorageService {
     for (const cat of REQUIRED_CATEGORIES) {
       const nominee = categoryNominees[cat];
       const existingIndex = votes.findIndex(
-        v => (v?.voter || '').toLowerCase() === userLower && v?.category === cat && v?.voteMonth === voteMonth
+        v => String(v?.voter || '').toLowerCase() === userLower && v?.category === cat && v?.voteMonth === voteMonth
       );
 
       if (existingIndex !== -1) {
@@ -1595,14 +1681,18 @@ export class StorageService {
 
         // Merge fetched employees into map while preserving local status overrides & resigned status
         cleanFetched.forEach(f => {
-          const uKey = f.username.toLowerCase();
+          const uKey = (f.username || '').toLowerCase();
           const existing = empMap.get(uKey);
-          const overrideStatus = statusOverrides[uKey];
-          const finalStatus = overrideStatus || existing?.status || f.status || 'active';
+          const override = statusOverrides[uKey];
+          const finalStatus = (typeof override === 'string' ? override : override?.status) || existing?.status || f.status || 'active';
+          const finalResignedMonth = (override && typeof override === 'object' && override.resignedMonth)
+            ? override.resignedMonth
+            : (existing?.resignedMonth || f.resignedMonth);
 
           empMap.set(uKey, {
             ...f,
             status: finalStatus,
+            resignedMonth: finalStatus === 'resigned' ? finalResignedMonth : undefined,
             club: existing?.club || f.club,
             password: f.password || existing?.password || '123'
           });
@@ -1672,9 +1762,9 @@ export class StorageService {
             return {
               id: v.id || ('vote-' + Math.random().toString(36).substring(2, 7)),
               timestamp: ts,
-              voter: (v.voter || '').trim(),
-              category: (v.category || '').trim(),
-              nominee: (v.nominee || '').trim(),
+              voter: String(v.voter || '').trim(),
+              category: String(v.category || '').trim(),
+              nominee: String(v.nominee || '').trim(),
               voteMonth: vMonth || ''
             };
           });
@@ -2145,9 +2235,9 @@ export class StorageService {
                 votes.push({
                   id: `vote-${i}`,
                   timestamp: ts,
-                  voter: (r[1] || '').trim(),
-                  category: (r[2] || '').trim(),
-                  nominee: (r[3] || '').trim(),
+                  voter: String(r[1] || '').trim(),
+                  category: String(r[2] || '').trim(),
+                  nominee: String(r[3] || '').trim(),
                   voteMonth: vMonth || ''
                 });
               }

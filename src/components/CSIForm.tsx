@@ -52,7 +52,7 @@ export const CSIForm: React.FC<CSIFormProps> = ({ onSuccessSubmitted, showModal 
   const [q2Scores, setQ2Scores] = useState<{ [key: number]: number }>({ 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 });
 
   useEffect(() => {
-    const emps = StorageService.getEmployees().filter(e => e.status === 'active');
+    const emps = StorageService.getEmployees().filter(e => StorageService.isEmployeeActiveInMonth(e));
     setEmployees(emps);
   }, []);
 

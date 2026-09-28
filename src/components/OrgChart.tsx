@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { OrgNode, OrgChartConfig, Employee, OrgBadgeLevel } from '../types';
+import { OrgNode, OrgChartConfig, Employee, OrgBadgeLevel, OrgTag } from '../types';
 import { StorageService } from '../services/storage';
 import { getStaffPhoto } from '../utils/staffAvatars';
 import html2canvas from 'html2canvas-pro';
@@ -13,16 +13,16 @@ interface OrgChartProps {
 
 export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const [config, setConfig] = useState<OrgChartConfig>(() => StorageService.getOrgChart());
-  const [employees, setEmployees] = useState<Employee[]>(() => StorageService.getEmployees().filter(e => e.status !== 'resigned'));
+  const [employees, setEmployees] = useState<Employee[]>(() => StorageService.getEmployees().filter(e => StorageService.isEmployeeActiveInMonth(e)));
   const [isEditing, setIsEditing] = useState(false);
 
   // Check 3 allowed users: Chalee Meksuwan, Raschanee Majanit, 563770
   const canEditOrgChart = React.useMemo(() => {
     if (!currentUser) return false;
     if (currentUser.isAdmin) return true;
-    const username = (currentUser.username || '').toLowerCase().trim();
-    const fullName = (currentUser.fullName || '').toLowerCase().trim();
-    const id = (currentUser.id || '').toLowerCase().trim();
+    const username = String(currentUser.username || '').toLowerCase().trim();
+    const fullName = String(currentUser.fullName || '').toLowerCase().trim();
+    const id = String(currentUser.id || '').toLowerCase().trim();
 
     // 1. Employee code / username 563770 / Supattra
     if (username === '563770' || id === 'sheet-emp-563770' || id === '563770' || fullName.includes('สุพัตรา') || fullName.includes('supattra')) return true;
@@ -56,6 +56,28 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const [zoomScale, setZoomScale] = useState<number>(100);
   const [pdfOrientation, setPdfOrientation] = useState<'portrait' | 'fit-poster' | 'landscape'>('portrait');
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [newTagText, setNewTagText] = useState('');
+  const [newTagColor, setNewTagColor] = useState<'blue' | 'purple' | 'orange' | 'green' | 'cyan' | 'indigo' | 'amber'>('blue');
+
+  const PRESET_ORG_TAGS: { text: string; color: 'blue' | 'purple' | 'orange' | 'green' | 'cyan' | 'indigo' | 'amber' }[] = [
+    { text: 'PM', color: 'blue' },
+    { text: 'CM', color: 'cyan' },
+    { text: 'PM by Site', color: 'blue' },
+    { text: 'PM by Vendor', color: 'purple' },
+    { text: 'Medical Gas', color: 'blue' },
+    { text: 'Inventory', color: 'blue' },
+    { text: 'Training', color: 'cyan' },
+    { text: 'Plan battery', color: 'blue' },
+    { text: 'Transfer In,Out', color: 'blue' },
+    { text: 'ECRI', color: 'blue' },
+    { text: 'Stock', color: 'cyan' },
+    { text: 'Equipment Pool', color: 'blue' },
+    { text: 'Admin', color: 'orange' },
+    { text: 'Junior Staff', color: 'amber' },
+    { text: 'Senior Staff', color: 'green' },
+    { text: 'Calibration', color: 'green' },
+    { text: 'Research & Development', color: 'blue' }
+  ];
 
   const chartRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -254,7 +276,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const handlePullEmployeePhotos = (silent = false) => {
     // Read healed and freshest config from StorageService
     const freshConfig = StorageService.getOrgChart();
-    const currentEmps = StorageService.getEmployees().filter(e => e.status !== 'resigned');
+    const currentEmps = StorageService.getEmployees().filter(e => StorageService.isEmployeeActiveInMonth(e));
     setEmployees(currentEmps);
     let updatedCount = 0;
 
@@ -407,6 +429,30 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
     const updatedNodes = config.nodes.map(n => (n.id === editingNode.id ? editingNode : n));
     handleSaveConfig({ ...config, nodes: updatedNodes });
     setEditingNode(null);
+  };
+
+  const handleAddTagToEditingNode = (text: string, color: 'blue' | 'purple' | 'orange' | 'green' | 'cyan' | 'indigo' | 'amber' = 'blue') => {
+    if (!editingNode || !text.trim()) return;
+    const currentTags = editingNode.tags || [];
+    if (currentTags.some(t => t.text.toLowerCase().trim() === text.toLowerCase().trim())) return;
+    const newTag: OrgTag = {
+      id: `t-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      text: text.trim(),
+      color
+    };
+    setEditingNode({
+      ...editingNode,
+      tags: [...currentTags, newTag]
+    });
+    setNewTagText('');
+  };
+
+  const handleRemoveTagFromEditingNode = (tagId: string) => {
+    if (!editingNode) return;
+    setEditingNode({
+      ...editingNode,
+      tags: (editingNode.tags || []).filter(t => t.id !== tagId)
+    });
   };
 
   const handleDeleteNode = (nodeId: string) => {
@@ -896,7 +942,6 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             <img
               src={getProxiedImageUrl(displayPhoto)}
               alt={node.fullName}
-              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
               style={{
                 width: '100%',
@@ -913,12 +958,21 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               }}
               onError={e => {
                 const img = e.currentTarget;
+                img.removeAttribute('crossorigin');
+                // 1. If failed via proxy, try direct clean URL
+                if (img.src.includes('/api/image-proxy') && !img.dataset.triedDirect) {
+                  img.dataset.triedDirect = 'true';
+                  img.src = displayPhoto;
+                  return;
+                }
+                // 2. Try verified canonical photo
                 const canonical = getStaffPhoto(node.employeeId, node.nickname, node.fullName);
                 if (canonical && img.src !== canonical && !img.dataset.triedCanonical) {
                   img.dataset.triedCanonical = 'true';
                   img.src = canonical;
                   return;
                 }
+                // 3. Fallback to Dicebear initials
                 const fallback = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(node.nickname || node.fullName || 'staff')}`;
                 if (img.src !== fallback) {
                   img.src = fallback;
@@ -1022,6 +1076,41 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               );
             })}
           </div>
+
+          {/* Job Details Box (รายละเอียดงาน / หน้าที่รับผิดชอบ ตามกรอบที่ผู้ใช้ต้องการ) */}
+          {(node.jobDetails || (canEditOrgChart && isEditing)) && (
+            <div
+              onClick={() => {
+                if (canEditOrgChart) handleOpenEditNode(node);
+              }}
+              title={canEditOrgChart ? "คลิกเพื่อแก้ไขรายละเอียดงาน" : undefined}
+              className={`mt-1.5 rounded-xl px-2.5 py-1.5 text-center w-[190px] min-w-[190px] max-w-[190px] shadow-sm border transition-all ${
+                canEditOrgChart && isEditing ? 'cursor-pointer hover:border-sky-400 hover:shadow-md' : ''
+              }`}
+              style={{
+                backgroundColor: '#ffffff',
+                borderColor: '#bae6fd',
+                borderWidth: '1px',
+                borderStyle: 'solid',
+                color: '#0f172a'
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 text-[9px] font-extrabold text-sky-800 uppercase tracking-wider mb-0.5">
+                <i className="fa-solid fa-briefcase text-sky-600 text-[10px]"></i>
+                <span>หน้าที่รับผิดชอบ</span>
+                {canEditOrgChart && isEditing && (
+                  <i className="fa-solid fa-pen text-[8px] text-amber-500 ml-0.5"></i>
+                )}
+              </div>
+              <div className="text-[10px] md:text-[11px] font-semibold text-slate-700 leading-tight font-th break-words">
+                {node.jobDetails || (
+                  <span className="text-slate-400 italic text-[9px]">
+                    + เพิ่มรายละเอียดงาน
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
@@ -1965,6 +2054,131 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Role Title */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 mb-1 block">
+                  ตำแหน่งหน้าที่หลัก (Role Title)
+                </label>
+                <input
+                  type="text"
+                  value={editingNode.roleTitle || ''}
+                  placeholder="เช่น PM by Site, Medical Gas, Inventory, ECRI, PM by Vendor..."
+                  onChange={e => setEditingNode({ ...editingNode, roleTitle: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-th"
+                />
+              </div>
+
+              {/* Task Badges / Tags Manager */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <i className="fa-solid fa-tags text-sky-400"></i>
+                    <span>ป้ายงาน / หน้าที่รับผิดชอบ (Role Tags)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">คลิกที่ป้ายเพื่อลบ</span>
+                </label>
+
+                {/* Current Tags */}
+                <div className="flex flex-wrap gap-1.5 mb-2.5 p-2 bg-slate-800/60 rounded-xl border border-slate-700/60 min-h-[38px] items-center">
+                  {editingNode.tags && editingNode.tags.length > 0 ? (
+                    editingNode.tags.map(t => {
+                      const tagBg = t.color === 'purple' ? '#7e22ce' : t.color === 'orange' || t.color === 'amber' ? '#fbbf24' : t.color === 'cyan' ? '#14b8a6' : t.color === 'green' ? '#16a34a' : '#0288d1';
+                      const tagColor = t.color === 'orange' || t.color === 'amber' ? '#0f172a' : '#ffffff';
+                      return (
+                        <span
+                          key={t.id}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg shadow-sm"
+                          style={{ backgroundColor: tagBg, color: tagColor }}
+                        >
+                          <span>{t.text}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTagFromEditingNode(t.id)}
+                            className="hover:opacity-75 transition-opacity ml-1 text-xs font-black cursor-pointer"
+                            title="ลบป้ายนี้"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span className="text-[11px] text-slate-500 italic">ยังไม่มีป้ายหน้าที่รับผิดชอบ</span>
+                  )}
+                </div>
+
+                {/* Quick Add Presets */}
+                <div className="mb-2">
+                  <span className="text-[10px] font-bold text-slate-400 block mb-1">เลือกด่วนจากหน้าที่มาตรฐาน:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {PRESET_ORG_TAGS.map(pt => (
+                      <button
+                        key={pt.text}
+                        type="button"
+                        onClick={() => handleAddTagToEditingNode(pt.text, pt.color)}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+                      >
+                        + {pt.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add Custom Tag */}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={newTagText}
+                    onChange={e => setNewTagText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTagToEditingNode(newTagText, newTagColor);
+                      }
+                    }}
+                    placeholder="พิมพ์ป้ายงานใหม่..."
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-th"
+                  />
+                  <select
+                    value={newTagColor}
+                    onChange={e => setNewTagColor(e.target.value as any)}
+                    className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-slate-300 focus:outline-none"
+                  >
+                    <option value="blue">สีฟ้า</option>
+                    <option value="cyan">สีเขียวน้ำทะเล</option>
+                    <option value="purple">สีม่วง</option>
+                    <option value="orange">สีส้ม</option>
+                    <option value="green">สีเขียว</option>
+                    <option value="amber">สีเหลือง</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleAddTagToEditingNode(newTagText, newTagColor)}
+                    className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md transition-colors"
+                  >
+                    เพิ่มป้าย
+                  </button>
+                </div>
+              </div>
+
+              {/* Detailed Work Responsibilities / Job Description */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <i className="fa-solid fa-clipboard-list text-sky-400"></i>
+                    <span>คำอธิบายรายละเอียดงานเพิ่มเติม (Detailed Work Description)</span>
+                  </span>
+                  <span className="text-[10px] text-sky-400 font-normal">แสดงในกรอบรายละเอียดงาน</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={editingNode.jobDetails || ''}
+                  placeholder="ระบุหน้าที่รับผิดชอบ เครื่องมือที่ดูแล หรืองานเฉพาะทางที่ได้รับมอบหมาย..."
+                  onChange={e => setEditingNode({ ...editingNode, jobDetails: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-th resize-none"
+                />
               </div>
 
             </div>

@@ -154,6 +154,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     img: 'https://img1.pic.in.th/images/6596ac2053383a160.png',
     club: 'ชมรมเดิน-วิ่ง',
     status: 'resigned',
+    resignedMonth: '2026-08',
     isAdmin: false,
     dept: 'Biomedical Engineering'
   },

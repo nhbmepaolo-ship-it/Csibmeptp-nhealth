@@ -54,9 +54,10 @@ export const ActivityLogForm: React.FC<ActivityLogFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const emps = StorageService.getEmployees().filter(e => e.status === 'active');
+    const actMonth = activityDate ? activityDate.substring(0, 7) : undefined;
+    const emps = StorageService.getEmployees().filter(e => StorageService.isEmployeeActiveInMonth(e, actMonth));
     setEmployees(emps);
-  }, []);
+  }, [activityDate]);
 
   useEffect(() => {
     setSelectedUser(currentUser);

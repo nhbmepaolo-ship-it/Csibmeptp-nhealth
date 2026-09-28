@@ -12,6 +12,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ปิ้ง',
       roleTitle: 'Manager',
       badgeLevel: 'Manager',
+      jobDetails: 'ผู้จัดการแผนก วิศวกรรมชีวการแพทย์ BME PTP',
       photoUrl: 'https://img2.pic.in.th/S__6471704_0-removebg-preview.png',
       branchId: 'manager',
       order: 1
@@ -24,6 +25,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'มิน',
       roleTitle: 'supervisor',
       badgeLevel: 'Supervisor',
+      jobDetails: 'ซูเปอร์ไวเซอร์ ควบคุมและบริหารงานวิศวกรรมการแพทย์',
       photoUrl: 'https://img1.pic.in.th/images/970d1e089ad78d07db702e1eab5698c6.png',
       branchId: 'supervisor',
       order: 1
@@ -37,6 +39,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'เปี้ยว',
       roleTitle: 'Senior Staff',
       badgeLevel: 'Senior Staff',
+      jobDetails: 'วิจัยและพัฒนา, ซ่อมบำรุงเชิงป้องกัน, แก้ไขเครื่องมือ (ระบบ 2, 5)',
       photoUrl: 'https://img2.pic.in.th/BME_563770..045756.png',
       systems: [2, 5],
       tags: [
@@ -54,6 +57,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'อ้อ',
       roleTitle: 'PM by Site',
       badgeLevel: 'Staff',
+      jobDetails: 'งานบำรุงรักษาเชิงป้องกันประจำไซต์ (PM by Site)',
       photoUrl: 'https://img2.pic.in.th/BME_612366..045835.png',
       tags: [
         { id: 't-4', text: 'PM by Site', color: 'blue' }
@@ -68,6 +72,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'เป๊ก',
       roleTitle: 'Medical Gas',
       badgeLevel: 'Staff',
+      jobDetails: 'ระบบแก๊สทางการแพทย์ และอุปกรณ์ช่วยชีวิตฉุกเฉิน',
       photoUrl: 'https://img2.pic.in.th/BME_603892..045611.png',
       tags: [
         { id: 't-5', text: 'Medical Gas', color: 'blue' }
@@ -82,6 +87,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ลูกตาล',
       roleTitle: 'Transfer In,Out',
       badgeLevel: 'Staff',
+      jobDetails: 'การโอนย้าย รับเข้า-ส่งออกเครื่องมือแพทย์ (Transfer In, Out)',
       photoUrl: 'https://img2.pic.in.th/BME_606675..045820.png',
       tags: [
         { id: 't-6', text: 'Transfer In,Out', color: 'blue' }
@@ -96,6 +102,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ปุ้ย',
       roleTitle: 'Admin / Junior Staff',
       badgeLevel: 'Junior Staff',
+      jobDetails: 'งานธุรการ บันทึกระบบ และสนับสนุนงานฝ่ายช่าง',
       photoUrl: 'https://img2.pic.in.th/ChatGPT-Image-Sep-4-2026-05_05_36-PM.png',
       tags: [
         { id: 't-7', text: 'Admin', color: 'orange' },
@@ -113,6 +120,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'แฮม',
       roleTitle: 'Inventory, Training',
       badgeLevel: 'Staff',
+      jobDetails: 'บริหารจัดการคลังสินค้าอะไหล่ และจัดอบรมเครื่องมือแพทย์',
       photoUrl: 'https://img1.pic.in.th/images/5fb2f77d94121bd37.png',
       tags: [
         { id: 't-9', text: 'Inventory', color: 'blue' },
@@ -128,6 +136,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'อ้อน',
       roleTitle: 'Plan battery',
       badgeLevel: 'Staff',
+      jobDetails: 'แผนบำรุงรักษาและเปลี่ยนแบตเตอรี่เครื่องมือแพทย์ประจำปี',
       photoUrl: 'https://img2.pic.in.th/4447b7344aeba4742.png',
       tags: [
         { id: 't-11', text: 'Plan battery', color: 'blue' }
@@ -142,6 +151,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'เอิ๊ก',
       roleTitle: 'Medical Gas, Junior Staff',
       badgeLevel: 'Junior Staff',
+      jobDetails: 'ระบบจ่ายแก๊สทางการแพทย์ และงานช่างสนับสนุน',
       photoUrl: 'https://img1.pic.in.th/images/625192.png',
       tags: [
         { id: 't-12', text: 'Medical Gas', color: 'purple' },
@@ -159,6 +169,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ณฐ',
       roleTitle: 'Senior Staff',
       badgeLevel: 'Senior Staff',
+      jobDetails: 'ประสานงานและกำกับดูแลงานซ่อมบำรุงผู้ขายภายนอก (ระบบ 6, 7)',
       photoUrl: 'https://img1.pic.in.th/images/BME_563779..045629.png',
       systems: [6, 7],
       tags: [
@@ -174,6 +185,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ซัน',
       roleTitle: 'ECRI',
       badgeLevel: 'Staff',
+      jobDetails: 'ระบบแจ้งเตือนความปลอดภัยเครื่องมือแพทย์สากล ECRI',
       photoUrl: 'https://img1.pic.in.th/images/BME_614669..045936.png',
       tags: [
         { id: 't-15', text: 'ECRI', color: 'blue' }
@@ -188,6 +200,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'จิ๊บ',
       roleTitle: 'PM by Site, Stock',
       badgeLevel: 'Staff',
+      jobDetails: 'บำรุงรักษาเชิงป้องกันประจำไซต์ และควบคุมสต๊อกเครื่องมือ',
       photoUrl: 'https://img1.pic.in.th/images/BME_616475..050052.png',
       tags: [
         { id: 't-16', text: 'PM by Site', color: 'blue' },
@@ -203,6 +216,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ปิ่น',
       roleTitle: 'PM by Vendor, Junior Staff',
       badgeLevel: 'Junior Staff',
+      jobDetails: 'ตรวจรับและประสานงานผู้ขายภายนอก (PM by Vendor)',
       photoUrl: 'https://img2.pic.in.th/3dd5cdfa08338f7c4.png',
       tags: [
         { id: 't-18', text: 'PM by Vendor', color: 'purple' },
@@ -218,6 +232,7 @@ export const INITIAL_ORG_CHART: OrgChartConfig = {
       nickname: 'ไอซ์',
       roleTitle: 'Equipment Pool',
       badgeLevel: 'Staff',
+      jobDetails: 'บริหารจัดการอุปกรณ์เครื่องมือแพทย์กองกลาง (Equipment Pool)',
       photoUrl: 'https://img1.pic.in.th/images/49d801c9-c50d-4ac0-b054-85b551c86d98.png',
       tags: [
         { id: 't-20', text: 'Equipment Pool', color: 'blue' }

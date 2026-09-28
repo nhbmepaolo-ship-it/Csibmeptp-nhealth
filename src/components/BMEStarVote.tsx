@@ -182,13 +182,8 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
     if (!employees || employees.length === 0) return [];
     return employees.filter(emp => {
       if (!emp) return false;
-      // 1. Exclude resigned and inactive employees
-      if (emp.status === 'resigned' || emp.status === 'inactive') {
-        return false;
-      }
-
-      // Check if employee has resignation month specified
-      if ((emp as any).resignedMonth && targetVoteMonth >= (emp as any).resignedMonth) {
+      // 1. Exclude resigned and inactive employees based on resignation month
+      if (!StorageService.isEmployeeActiveInMonth(emp, targetVoteMonth)) {
         return false;
       }
 
@@ -210,9 +205,9 @@ export const BMEStarVote: React.FC<BMEStarVoteProps> = ({ currentUser, onLogin, 
       setCategoryVotes({});
       return;
     }
-    const currentUsernameLower = (currentUser.username || '').trim().toLowerCase();
+    const currentUsernameLower = String(currentUser.username || '').trim().toLowerCase();
     const userVotes = (votes || []).filter(
-      v => v && v.voter && (v.voter || '').trim().toLowerCase() === currentUsernameLower && (v.voteMonth || '') === targetVoteMonth
+      v => v && v.voter && String(v.voter || '').trim().toLowerCase() === currentUsernameLower && String(v.voteMonth || '') === targetVoteMonth
     );
     const initialMap: Record<string, string> = {};
     CATEGORIES.forEach(cat => {

@@ -46,6 +46,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
   const [editImgUrl, setEditImgUrl] = useState('');
   const [editClub, setEditClub] = useState<HappyLifeClub>('ชมรมเดิน-วิ่ง');
   const [editStatus, setEditStatus] = useState<'active' | 'resigned'>('active');
+  const [editResignedMonth, setEditResignedMonth] = useState('');
+  const [editRoleTitle, setEditRoleTitle] = useState('');
+  const [editJobDetails, setEditJobDetails] = useState('');
   const [editIsAdmin, setEditIsAdmin] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -151,6 +154,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
     setEditImgUrl(getStaffPhoto(emp.username, emp.nickname, emp.fullName) || emp.img);
     setEditClub(emp.club);
     setEditStatus((emp.status === 'resigned' || (emp.status as string) === 'inactive') ? 'resigned' : 'active');
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    setEditResignedMonth(emp.resignedMonth || currentMonthKey);
+    setEditRoleTitle(emp.roleTitle || '');
+    setEditJobDetails(emp.jobDetails || '');
     setEditIsAdmin(emp.isAdmin || false);
   };
 
@@ -168,6 +176,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
       return;
     }
 
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
     const updated = StorageService.updateEmployee(editingEmp.id, {
       fullName: editFullName.trim(),
       nickname: editNickname.trim(),
@@ -176,6 +187,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
       img: editImgUrl.trim() || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(editNickname.trim())}&skinColor=f8d25c`,
       club: editClub,
       status: editStatus,
+      resignedMonth: editStatus === 'resigned' ? (editResignedMonth || currentMonthKey) : undefined,
+      roleTitle: editRoleTitle.trim() || undefined,
+      jobDetails: editJobDetails.trim() || undefined,
       isAdmin: isSuperAdmin ? editIsAdmin : editingEmp.isAdmin
     });
 
@@ -188,13 +202,27 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
 
   const handleStatusToggle = (emp: Employee) => {
     const isCurrentlyActive = emp.status === 'active';
-    const newStatus: 'active' | 'resigned' = isCurrentlyActive ? 'resigned' : 'active';
-    const statusText = newStatus === 'active' ? 'Active (ยังทำงานอยู่)' : 'Resigned (ลาออกแล้ว)';
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    if (confirm(`คุณต้องการเปลี่ยนสถานะของ ${emp.fullName} เป็น "${statusText}" ใช่หรือไม่?`)) {
-      StorageService.updateEmployee(emp.id, { status: newStatus });
-      showToast('success', `อัปเดตสถานะของ ${emp.fullName} เป็น ${statusText} เรียบร้อยแล้ว`);
-      loadData();
+    if (isCurrentlyActive) {
+      const defaultMonth = emp.resignedMonth || currentMonthKey;
+      const inputMonth = prompt(
+        `คุณต้องการเปลี่ยนสถานะของ ${emp.fullName} เป็น "ลาออกแล้ว"\nโปรดระบุเดือนที่ลาออก (รูปแบบ YYYY-MM เช่น ${currentMonthKey}) เพื่อไม่ให้รายชื่อปรากฏในแบบฟอร์มอื่นๆ:`,
+        defaultMonth
+      );
+      if (inputMonth !== null) {
+        const resignedMonth = inputMonth.trim() || defaultMonth;
+        StorageService.updateEmployee(emp.id, { status: 'resigned', resignedMonth });
+        showToast('success', `อัปเดตสถานะของ ${emp.fullName} เป็น ลาออกแล้ว (มีผล ${resignedMonth})`);
+        loadData();
+      }
+    } else {
+      if (confirm(`คุณต้องการเปลี่ยนสถานะของ ${emp.fullName} กลับมาเป็น "Active (ยังทำงานอยู่)" ใช่หรือไม่?`)) {
+        StorageService.updateEmployee(emp.id, { status: 'active', resignedMonth: undefined });
+        showToast('success', `อัปเดตสถานะของ ${emp.fullName} เป็น Active เรียบร้อยแล้ว`);
+        loadData();
+      }
     }
   };
 
@@ -526,9 +554,20 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
                     {isSelf && <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black px-1.5 py-0.5 rounded border border-emerald-500/30">คุณ</span>}
                   </div>
                   <div className="text-xs text-slate-400 font-mono">User: {emp.username}</div>
+                  {emp.roleTitle && (
+                    <div className="text-[11px] text-sky-400 font-bold truncate mt-0.5">
+                      <i className="fa-solid fa-briefcase mr-1 text-[10px]"></i>{emp.roleTitle}
+                    </div>
+                  )}
                   <div className="text-[10px] text-emerald-400 font-bold mt-0.5">
                     <i className="fa-solid fa-users-rectangle mr-1"></i>{emp.club}
                   </div>
+                  {emp.status === 'resigned' && (
+                    <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-rose-300 bg-rose-950/70 border border-rose-800/50 rounded-md px-1.5 py-0.5 w-fit">
+                      <i className="fa-solid fa-calendar-xmark text-rose-400 text-[10px]"></i>
+                      <span>ลาออกเมื่อ: {emp.resignedMonth || 'ไม่ได้ระบุเดือน'}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -734,6 +773,56 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ currentUser, s
                   <option value="active">🟢 Active (ยังทำงานอยู่)</option>
                   <option value="resigned">🔴 Resigned (ลาออกแล้ว)</option>
                 </select>
+              </div>
+
+              {/* Conditional Resigned Month Picker */}
+              {editStatus === 'resigned' && (
+                <div className="sm:col-span-2 bg-rose-950/40 border border-rose-800/60 rounded-2xl p-3.5 space-y-1">
+                  <label className="block text-xs font-bold text-rose-300 mb-1 flex items-center gap-1.5">
+                    <i className="fa-solid fa-calendar-xmark text-rose-400"></i>
+                    <span>ระบุเดือนที่ลาออก (เพื่อไม่ให้รายชื่อปรากฏในแบบฟอร์มอื่นๆ ตั้งแต่เดือนนี้เป็นต้นไป) <span className="text-rose-400">*</span></span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <input
+                      type="month"
+                      value={editResignedMonth}
+                      onChange={e => setEditResignedMonth(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-slate-800 border border-rose-500/50 text-white text-xs font-semibold outline-none focus:border-rose-400"
+                      required={editStatus === 'resigned'}
+                    />
+                    <span className="text-[11px] text-rose-200">
+                      {editResignedMonth ? `รายชื่อจะไม่ปรากฏในแบบฟอร์ม (CSI, โหวต, กิจกรรม, ผังองค์กร) ตั้งแต่เดือน ${editResignedMonth} เป็นต้นไป` : 'กรุณาระบุเดือนที่ลาออก'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Role Title */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  ตำแหน่งหน้าที่หลัก (Role Title)
+                </label>
+                <input
+                  type="text"
+                  value={editRoleTitle}
+                  onChange={e => setEditRoleTitle(e.target.value)}
+                  placeholder="เช่น PM by Site, Medical Gas, Inventory, ECRI..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Job Details */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  รายละเอียดงาน / หน้าที่รับผิดชอบ (Job Description)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editJobDetails}
+                  onChange={e => setEditJobDetails(e.target.value)}
+                  placeholder="ระบุหน้าที่งานที่รับผิดชอบ เครื่องมือที่ดูแล หรืองานเฉพาะทาง..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold outline-none focus:border-purple-500 resize-none font-th"
+                />
               </div>
             </div>
 

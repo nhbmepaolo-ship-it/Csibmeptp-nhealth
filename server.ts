@@ -178,9 +178,7 @@ async function startServer() {
 
       if (!response.ok) {
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Content-Type', 'image/svg+xml');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        return res.status(200).send('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="20" fill="#334155"/><text x="60" y="66" font-family="sans-serif" font-size="28" font-weight="bold" fill="#38bdf8" text-anchor="middle" dominant-baseline="middle">BME</text></svg>');
+        return res.status(404).send('Image fetch failed');
       }
 
       const contentType = response.headers.get('content-type') || 'image/png';

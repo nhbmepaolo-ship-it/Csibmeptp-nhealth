@@ -16,6 +16,8 @@ export interface Employee {
   status: 'active' | 'resigned' | 'inactive';
   isAdmin: boolean;
   dept?: string;
+  roleTitle?: string;
+  jobDetails?: string;
   resignedMonth?: string;
   resignedDate?: string;
 }
@@ -127,6 +129,7 @@ export interface OrgNode {
   fullName: string;
   nickname?: string;
   roleTitle: string; // e.g. Manager, Supervisor, Senior Staff, Admin
+  jobDetails?: string; // รายละเอียดงาน / หน้าที่รับผิดชอบเพิ่มเติม
   photoUrl?: string;
   badgeLevel?: OrgBadgeLevel;
   tags?: OrgTag[];
