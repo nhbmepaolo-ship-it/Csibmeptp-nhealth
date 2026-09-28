@@ -54,7 +54,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const [empSearch, setEmpSearch] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [zoomScale, setZoomScale] = useState<number>(100);
-  const [pdfOrientation, setPdfOrientation] = useState<'portrait' | 'fit-poster' | 'landscape'>('portrait');
+  const [pdfOrientation, setPdfOrientation] = useState<'portrait' | 'fit-poster' | 'landscape'>('fit-poster');
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [newTagText, setNewTagText] = useState('');
   const [newTagColor, setNewTagColor] = useState<'blue' | 'purple' | 'orange' | 'green' | 'cyan' | 'indigo' | 'amber'>('blue');
@@ -540,11 +540,17 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 const ctx = cvs.getContext('2d');
                 if (ctx) {
                   if (isAvatar) {
-                    // Center-crop to 1:1 square
+                    // Center-crop to 1:1 circle with anti-aliasing
                     const size = Math.min(nw, nh);
                     const sx = (nw - size) / 2;
                     const sy = (nh - size) / 2;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(100, 100, 99, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.clip();
                     ctx.drawImage(tempImg, sx, sy, size, size, 0, 0, 200, 200);
+                    ctx.restore();
                   } else {
                     ctx.drawImage(tempImg, 0, 0, nw, nh);
                   }
@@ -562,6 +568,32 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 img.setAttribute('data-original-src', img.src);
               }
               img.src = dataUrl;
+              return;
+            }
+          }
+
+          // Fallback if network or CORS failed: generate avatar icon canvas so html2canvas never hangs or fails
+          if (isAvatar) {
+            const cvs = document.createElement('canvas');
+            cvs.width = 200;
+            cvs.height = 200;
+            const ctx = cvs.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#0288d1';
+              ctx.beginPath();
+              ctx.arc(100, 100, 99, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 80px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              const nameInitial = (img.alt || 'B').trim().charAt(0) || 'B';
+              ctx.fillText(nameInitial, 100, 100);
+              const fallbackUrl = cvs.toDataURL('image/png');
+              if (!img.getAttribute('data-original-src')) {
+                img.setAttribute('data-original-src', img.src);
+              }
+              img.src = fallbackUrl;
             }
           }
         } catch (e) {
@@ -599,15 +631,19 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       .replace(/color-mix\([^)]+\)/g, fallback);
   };
 
-  // Capture canvas logic with exact visual preview match
+  // Capture canvas logic with exact visual preview match and zero blank top space
   const captureOrgChartCanvas = async (element: HTMLElement) => {
     const originalTransform = element.style.transform;
+    const originalTransition = element.style.transition;
+    element.style.transition = 'none';
     element.style.transform = 'none';
 
     try {
       await prepareChartImagesForExport(element);
 
       const exportWidth = 1400;
+      // scrollHeight of the actual element when unscaled
+      const exportHeight = Math.ceil(element.scrollHeight || element.offsetHeight || 2400);
 
       return await html2canvas(element, {
         scale: 2,
@@ -615,12 +651,15 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
         allowTaint: true,
         backgroundColor: '#eaf4fb',
         logging: false,
-        windowWidth: 1600,
-        windowHeight: 2200,
         width: exportWidth,
+        height: exportHeight,
+        windowWidth: exportWidth,
+        windowHeight: exportHeight,
+        x: 0,
+        y: 0,
         scrollX: 0,
         scrollY: 0,
-        onclone: (clonedDoc) => {
+        onclone: (clonedDoc, clonedElement) => {
           // 1. Sanitize all <style> tags in cloned document to remove any oklab/oklch/color-mix CSS declarations that break html2canvas
           const styleTags = clonedDoc.querySelectorAll('style');
           styleTags.forEach(style => {
@@ -648,24 +687,54 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             }
           });
 
-          const clonedEl = clonedDoc.getElementById('org-chart-print-area') as HTMLElement;
+          // 3. Locate target chart container in cloned document
+          const clonedEl = (clonedElement || clonedDoc.getElementById('org-chart-print-area')) as HTMLElement;
           if (!clonedEl) return;
 
-          // Hide edit buttons and interactive popups in export
+          // 4. Hide all sibling nodes in ancestor hierarchy so clonedEl is positioned strictly at (0, 0)
+          let curr: HTMLElement | null = clonedEl;
+          while (curr && curr !== clonedDoc.body) {
+            const parent = curr.parentElement;
+            if (parent) {
+              Array.from(parent.children).forEach(sibling => {
+                if (sibling !== curr) {
+                  (sibling as HTMLElement).style.display = 'none';
+                }
+              });
+              parent.style.margin = '0';
+              parent.style.padding = '0';
+              parent.style.transform = 'none';
+              parent.style.overflow = 'visible';
+              parent.style.height = 'auto';
+              parent.style.minHeight = '0';
+              parent.style.maxHeight = 'none';
+              parent.style.position = 'static';
+            }
+            curr = parent;
+          }
+
+          clonedDoc.body.style.margin = '0';
+          clonedDoc.body.style.padding = '0';
+          clonedDoc.body.style.overflow = 'visible';
+          clonedDoc.body.style.backgroundColor = '#eaf4fb';
+
+          // 5. Hide interactive action buttons in export
           const buttons = clonedDoc.querySelectorAll('button');
           buttons.forEach(btn => {
             (btn as HTMLElement).style.display = 'none';
           });
 
-          // Set exact poster width and layout
-          clonedEl.style.width = '1400px';
-          clonedEl.style.minWidth = '1400px';
-          clonedEl.style.maxWidth = '1400px';
-          clonedEl.style.height = 'auto';
-          clonedEl.style.minHeight = 'auto';
+          // 6. Explicitly pin chart dimensions and layout
+          clonedEl.style.width = `${exportWidth}px`;
+          clonedEl.style.minWidth = `${exportWidth}px`;
+          clonedEl.style.maxWidth = `${exportWidth}px`;
+          clonedEl.style.height = `${exportHeight}px`;
+          clonedEl.style.minHeight = `${exportHeight}px`;
           clonedEl.style.maxHeight = 'none';
           clonedEl.style.overflow = 'visible';
           clonedEl.style.position = 'relative';
+          clonedEl.style.top = '0';
+          clonedEl.style.left = '0';
           clonedEl.style.transform = 'none';
           clonedEl.style.margin = '0 auto';
           clonedEl.style.padding = '32px 36px';
@@ -674,7 +743,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
           clonedEl.style.backgroundColor = '#eaf4fb';
           clonedEl.style.color = '#0f2942';
 
-          // Force branches row to be flex row across full width
+          // 7. Force branches row to be flex row across full width
           const branches = clonedDoc.getElementById('org-chart-branches') as HTMLElement;
           if (branches) {
             branches.style.display = 'flex';
@@ -694,7 +763,38 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             });
           }
 
-          // Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
+          // 8. Force bottom 10 systems to be 4-column flex row
+          const systemsGrid = clonedDoc.getElementById('org-chart-10-systems-grid') as HTMLElement;
+          if (systemsGrid) {
+            systemsGrid.style.display = 'flex';
+            systemsGrid.style.flexDirection = 'row';
+            systemsGrid.style.justifyContent = 'space-between';
+            systemsGrid.style.alignItems = 'stretch';
+            systemsGrid.style.width = '100%';
+            systemsGrid.style.gap = '16px';
+            systemsGrid.style.boxSizing = 'border-box';
+
+            Array.from(systemsGrid.children).forEach(child => {
+              const cChild = child as HTMLElement;
+              cChild.style.flex = '1 1 0';
+              cChild.style.width = '24%';
+              cChild.style.minWidth = '0';
+              cChild.style.boxSizing = 'border-box';
+            });
+          }
+
+          // 9. Format legend
+          const legend = clonedDoc.getElementById('org-chart-legend') as HTMLElement;
+          if (legend) {
+            legend.style.display = 'flex';
+            legend.style.flexDirection = 'row';
+            legend.style.justifyContent = 'flex-end';
+            legend.style.alignItems = 'center';
+            legend.style.gap = '12px';
+            legend.style.width = '100%';
+          }
+
+          // 10. Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
           const clonedImgs = clonedEl.querySelectorAll('img');
           clonedImgs.forEach(cImg => {
             if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
@@ -706,8 +806,8 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               cImg.style.maxHeight = '74px';
               cImg.style.borderRadius = '50%';
               cImg.style.objectFit = 'cover';
-              cImg.style.aspectRatio = '1 / 1';
               cImg.style.display = 'block';
+              cImg.style.margin = 'auto';
 
               if (cImg.parentElement) {
                 cImg.parentElement.style.width = '80px';
@@ -717,34 +817,17 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 cImg.parentElement.style.maxWidth = '80px';
                 cImg.parentElement.style.maxHeight = '80px';
                 cImg.parentElement.style.borderRadius = '50%';
-                cImg.parentElement.style.aspectRatio = '1 / 1';
                 cImg.parentElement.style.overflow = 'hidden';
                 cImg.parentElement.style.boxSizing = 'border-box';
-                cImg.parentElement.style.display = 'flex';
-                cImg.parentElement.style.alignItems = 'center';
-                cImg.parentElement.style.justifyContent = 'center';
+                cImg.parentElement.style.position = 'relative';
               }
             }
           });
-
-          // Unwrap overflow parent containers
-          let parent = clonedEl.parentElement;
-          while (parent && parent !== clonedDoc.body) {
-            parent.style.overflow = 'visible';
-            parent.style.height = 'auto';
-            parent.style.minHeight = 'auto';
-            parent.style.maxHeight = 'none';
-            parent.style.display = 'block';
-            parent = parent.parentElement;
-          }
-
-          clonedDoc.body.style.overflow = 'visible';
-          clonedDoc.body.style.height = 'auto';
-          clonedDoc.body.style.backgroundColor = '#eaf4fb';
         }
       });
     } finally {
       element.style.transform = originalTransform;
+      element.style.transition = originalTransition;
       const imgs = Array.from(element.querySelectorAll<HTMLImageElement>('img[data-original-src]'));
       imgs.forEach(img => {
         const orig = img.getAttribute('data-original-src');
@@ -1673,7 +1756,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             </div>
 
             {/* 4 Category Groups Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div id="org-chart-10-systems-grid" className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               
               {/* Category 1: Leadership & Governance */}
               <div
@@ -1774,7 +1857,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             </div>
 
             {/* Legend Section (Bottom Right matching image) */}
-            <div className="flex flex-wrap items-center justify-end gap-3 text-xs font-th font-bold text-slate-700 pt-2">
+            <div id="org-chart-legend" className="flex flex-wrap items-center justify-end gap-3 text-xs font-th font-bold text-slate-700 pt-2">
               <div className="flex items-center gap-1.5 bg-[#ab47bc] text-white px-3.5 py-1 rounded-full shadow-sm whitespace-nowrap">
                 <div className="w-2.5 h-2.5 rounded-full bg-white shrink-0"></div>
                 <span style={{ color: '#ffffff' }}>แผนอนาคต</span>

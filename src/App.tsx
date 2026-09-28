@@ -93,15 +93,43 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    // Restore persistent user session if available so users do not have to re-login every time
+    // Restore user session if active and not expired
     const savedUser = StorageService.getCurrentUser();
     if (savedUser) {
       setCurrentUser(savedUser);
+    } else {
+      setCurrentUser(null);
     }
 
     // Initial silent sync on app mount to load latest data from Google Sheets
     triggerGlobalSync(true);
   }, []);
+
+  // Inactivity tracking & auto-logout protection (45 min idle or tab close)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const handleUserActivity = () => {
+      StorageService.touchUserActivity();
+    };
+
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    // Periodic check every 30 seconds for session timeout
+    const interval = setInterval(() => {
+      const active = StorageService.getCurrentUser();
+      if (!active && currentUser) {
+        setCurrentUser(null);
+        showToast('error', 'เซสชันหมดเวลาเนื่องจากไม่มีการใช้งานหรือปิดเบราว์เซอร์ กรุณาเข้าสู่ระบบใหม่');
+      }
+    }, 30000);
+
+    return () => {
+      activityEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity));
+      clearInterval(interval);
+    };
+  }, [currentUser]);
 
   const handleLogin = (user: Employee) => {
     setCurrentUser(user);
@@ -551,6 +579,10 @@ export default function App() {
                 <div>
                   <h3 className="font-th font-extrabold text-lg text-white">เข้าสู่ระบบ (Login)</h3>
                   <p className="text-[11px] text-slate-400">กรอกรหัสพนักงาน/Username และรหัสผ่านเพื่อเข้าสู่ระบบ</p>
+                  <p className="text-[10px] text-sky-400/90 mt-0.5 flex items-center gap-1">
+                    <i className="fa-solid fa-shield-halved text-[9px]"></i>
+                    <span>ระบบจะออกจากระบบอัตโนมัติเมื่อปิดเบราว์เซอร์หรือไม่มีการใช้งาน 45 นาที</span>
+                  </p>
                 </div>
               </div>
               <button

@@ -1476,23 +1476,87 @@ export class StorageService {
     }
   }
 
-  // Auth helper
+  // Auth helper with session expiration (45 min inactivity / 8h shift max / tab close detection)
   static getCurrentUser(): Employee | null {
     const data = localStorage.getItem(KEYS.CURRENT_USER);
     if (!data) return null;
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      let user: Employee | null = null;
+      let loginAt = 0;
+      let lastActiveAt = 0;
+
+      if (parsed && parsed.user && typeof parsed.lastActiveAt === 'number') {
+        user = parsed.user;
+        loginAt = parsed.loginAt || parsed.lastActiveAt;
+        lastActiveAt = parsed.lastActiveAt;
+      } else if (parsed && parsed.id && parsed.fullName) {
+        user = parsed;
+        loginAt = Date.now();
+        lastActiveAt = Date.now();
+      }
+
+      if (!user) {
+        this.setCurrentUser(null);
+        return null;
+      }
+
+      // Check if browser/tab was closed previously:
+      // If sessionStorage has no active marker, session is treated as expired
+      const tabActive = sessionStorage.getItem('bme_session_active');
+      if (!tabActive) {
+        this.setCurrentUser(null);
+        return null;
+      }
+
+      const now = Date.now();
+      const INACTIVITY_LIMIT = 45 * 60 * 1000; // 45 minutes
+      const MAX_DURATION = 8 * 60 * 60 * 1000; // 8 hours
+
+      if (now - lastActiveAt > INACTIVITY_LIMIT || now - loginAt > MAX_DURATION) {
+        this.setCurrentUser(null);
+        return null;
+      }
+
+      return user;
     } catch {
+      this.setCurrentUser(null);
       return null;
     }
   }
 
   static setCurrentUser(user: Employee | null): void {
     if (user) {
-      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
+      const now = Date.now();
+      const sessionData = {
+        user,
+        loginAt: now,
+        lastActiveAt: now
+      };
+      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(sessionData));
+      try {
+        sessionStorage.setItem('bme_session_active', 'true');
+      } catch {}
     } else {
       localStorage.removeItem(KEYS.CURRENT_USER);
+      try {
+        sessionStorage.removeItem('bme_session_active');
+      } catch {}
     }
+  }
+
+  static touchUserActivity(): void {
+    const data = localStorage.getItem(KEYS.CURRENT_USER);
+    if (!data) return;
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed && parsed.user && typeof parsed.lastActiveAt === 'number') {
+        const now = Date.now();
+        if (now - parsed.lastActiveAt < 20000) return; // throttle 20s
+        parsed.lastActiveAt = now;
+        localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(parsed));
+      }
+    } catch {}
   }
 
   static authenticateUser(user: string, pass: string): { success: boolean; user?: Employee; message?: string } {
