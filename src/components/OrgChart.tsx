@@ -484,6 +484,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   };
 
   // Helper to convert images in canvas to data URLs reliably
+  // Helper to convert images in canvas to data URLs reliably
   const prepareChartImagesForExport = async (container: HTMLElement) => {
     const imgs = Array.from(container.querySelectorAll('img'));
     await Promise.all(
@@ -491,12 +492,51 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
         try {
           if (img.src && img.src.startsWith('data:image/png;base64,')) return;
 
+          const isAvatar = !img.alt?.includes('Logo') && !img.src?.includes('logo');
+
+          // 1. If image is already rendered and complete in browser DOM, draw directly into circular canvas (1ms, zero network)
+          if (img.complete && img.naturalWidth > 0) {
+            try {
+              const nw = img.naturalWidth;
+              const nh = img.naturalHeight;
+              const cvs = document.createElement('canvas');
+              const targetSize = isAvatar ? 200 : nw;
+              cvs.width = targetSize;
+              cvs.height = isAvatar ? 200 : nh;
+              const ctx = cvs.getContext('2d');
+              if (ctx) {
+                if (isAvatar) {
+                  const size = Math.min(nw, nh);
+                  const sx = (nw - size) / 2;
+                  const sy = (nh - size) / 2;
+                  ctx.save();
+                  ctx.beginPath();
+                  ctx.arc(100, 100, 99, 0, Math.PI * 2);
+                  ctx.closePath();
+                  ctx.clip();
+                  ctx.drawImage(img, sx, sy, size, size, 0, 0, 200, 200);
+                  ctx.restore();
+                } else {
+                  ctx.drawImage(img, 0, 0, nw, nh);
+                }
+                const localDataUrl = cvs.toDataURL('image/png');
+                if (localDataUrl && localDataUrl.length > 200) {
+                  if (!img.getAttribute('data-original-src')) {
+                    img.setAttribute('data-original-src', img.src);
+                  }
+                  img.src = localDataUrl;
+                  return;
+                }
+              }
+            } catch {
+              // Canvas tainted if CORS is missing, fall through to fetch via proxy
+            }
+          }
+
           const currentSrc = img.currentSrc || img.src;
           if (!currentSrc) return;
 
-          const isAvatar = !img.alt?.includes('Logo') && !currentSrc.includes('logo');
-
-          // Always fetch clean blob through proxy if external to guarantee CORS headers
+          // 2. Fetch clean blob through proxy if needed
           const proxyUrl = getProxiedImageUrl(currentSrc);
           let blob: Blob | null = null;
           try {
@@ -505,13 +545,10 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               blob = await res.blob();
             }
           } catch {
-            // fallback to direct
             try {
               const res = await fetch(currentSrc, { mode: 'cors' });
               if (res.ok) blob = await res.blob();
-            } catch {
-              // ignore
-            }
+            } catch {}
           }
 
           if (blob) {
@@ -540,7 +577,6 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 const ctx = cvs.getContext('2d');
                 if (ctx) {
                   if (isAvatar) {
-                    // Center-crop to 1:1 circle with anti-aliasing
                     const size = Math.min(nw, nh);
                     const sx = (nw - size) / 2;
                     const sy = (nh - size) / 2;
@@ -568,32 +604,6 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 img.setAttribute('data-original-src', img.src);
               }
               img.src = dataUrl;
-              return;
-            }
-          }
-
-          // Fallback if network or CORS failed: generate avatar icon canvas so html2canvas never hangs or fails
-          if (isAvatar) {
-            const cvs = document.createElement('canvas');
-            cvs.width = 200;
-            cvs.height = 200;
-            const ctx = cvs.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#0288d1';
-              ctx.beginPath();
-              ctx.arc(100, 100, 99, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.fillStyle = '#ffffff';
-              ctx.font = 'bold 80px sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              const nameInitial = (img.alt || 'B').trim().charAt(0) || 'B';
-              ctx.fillText(nameInitial, 100, 100);
-              const fallbackUrl = cvs.toDataURL('image/png');
-              if (!img.getAttribute('data-original-src')) {
-                img.setAttribute('data-original-src', img.src);
-              }
-              img.src = fallbackUrl;
             }
           }
         } catch (e) {
@@ -632,18 +642,40 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   };
 
   // Capture canvas logic with exact visual preview match and zero blank top space
+  // Capture canvas logic with exact visual preview match, accurate full height, and zero clipped elements
   const captureOrgChartCanvas = async (element: HTMLElement) => {
     const originalTransform = element.style.transform;
     const originalTransition = element.style.transition;
     element.style.transition = 'none';
     element.style.transform = 'none';
 
+    // Force layout update after resetting transform
+    void element.offsetHeight;
+
     try {
       await prepareChartImagesForExport(element);
 
       const exportWidth = 1400;
-      // scrollHeight of the actual element when unscaled
-      const exportHeight = Math.ceil(element.scrollHeight || element.offsetHeight || 2400);
+
+      // Find lowest child element bottom to guarantee nothing (10 systems, legend, borders) is cut off
+      const containerRect = element.getBoundingClientRect();
+      const allChildren = Array.from(element.querySelectorAll('*'));
+      let maxBottomRelative = 0;
+      allChildren.forEach(child => {
+        const rect = child.getBoundingClientRect();
+        const bottomRel = rect.bottom - containerRect.top;
+        if (bottomRel > maxBottomRelative) {
+          maxBottomRelative = bottomRel;
+        }
+      });
+
+      // Calculate safe full content height with generous bottom padding for breathing room
+      const safeMeasuredHeight = Math.ceil(Math.max(
+        element.scrollHeight || 0,
+        element.offsetHeight || 0,
+        maxBottomRelative + 60,
+        2600
+      ));
 
       return await html2canvas(element, {
         scale: 2,
@@ -652,9 +684,9 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
         backgroundColor: '#eaf4fb',
         logging: false,
         width: exportWidth,
-        height: exportHeight,
+        height: safeMeasuredHeight,
         windowWidth: exportWidth,
-        windowHeight: exportHeight,
+        windowHeight: Math.max(safeMeasuredHeight + 400, 4200),
         x: 0,
         y: 0,
         scrollX: 0,
@@ -687,49 +719,45 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             }
           });
 
-          // 3. Locate target chart container in cloned document
+          // 3. Locate target chart container in cloned document and make it the SOLE child of clonedDoc.body
           const clonedEl = (clonedElement || clonedDoc.getElementById('org-chart-print-area')) as HTMLElement;
           if (!clonedEl) return;
 
-          // 4. Hide all sibling nodes in ancestor hierarchy so clonedEl is positioned strictly at (0, 0)
-          let curr: HTMLElement | null = clonedEl;
-          while (curr && curr !== clonedDoc.body) {
-            const parent = curr.parentElement;
-            if (parent) {
-              Array.from(parent.children).forEach(sibling => {
-                if (sibling !== curr) {
-                  (sibling as HTMLElement).style.display = 'none';
-                }
-              });
-              parent.style.margin = '0';
-              parent.style.padding = '0';
-              parent.style.transform = 'none';
-              parent.style.overflow = 'visible';
-              parent.style.height = 'auto';
-              parent.style.minHeight = '0';
-              parent.style.maxHeight = 'none';
-              parent.style.position = 'static';
-            }
-            curr = parent;
-          }
+          // Detach clonedEl from its nested flex/scroll parents and insert directly at the top of body
+          clonedDoc.body.insertBefore(clonedEl, clonedDoc.body.firstChild);
 
+          // Remove all other children from body (App, navbar, header, toolbars, etc.)
+          Array.from(clonedDoc.body.children).forEach(child => {
+            if (child !== clonedEl) {
+              child.remove();
+            }
+          });
+
+          // Reset body to zero margin, exact width and full height
           clonedDoc.body.style.margin = '0';
           clonedDoc.body.style.padding = '0';
-          clonedDoc.body.style.overflow = 'visible';
+          clonedDoc.body.style.width = `${exportWidth}px`;
+          clonedDoc.body.style.minWidth = `${exportWidth}px`;
+          clonedDoc.body.style.height = `${safeMeasuredHeight}px`;
+          clonedDoc.body.style.overflow = 'hidden';
           clonedDoc.body.style.backgroundColor = '#eaf4fb';
 
-          // 5. Hide interactive action buttons in export
+          // Remove ambient glowing blur circles that expand bounding box beyond boundaries
+          const blurBlobs = clonedEl.querySelectorAll('.blur-3xl');
+          blurBlobs.forEach(b => (b as HTMLElement).remove());
+
+          // Hide interactive action buttons in export
           const buttons = clonedDoc.querySelectorAll('button');
           buttons.forEach(btn => {
             (btn as HTMLElement).style.display = 'none';
           });
 
-          // 6. Explicitly pin chart dimensions and layout
+          // Explicitly pin chart dimensions and layout at (0, 0)
           clonedEl.style.width = `${exportWidth}px`;
           clonedEl.style.minWidth = `${exportWidth}px`;
           clonedEl.style.maxWidth = `${exportWidth}px`;
-          clonedEl.style.height = `${exportHeight}px`;
-          clonedEl.style.minHeight = `${exportHeight}px`;
+          clonedEl.style.height = `${safeMeasuredHeight}px`;
+          clonedEl.style.minHeight = `${safeMeasuredHeight}px`;
           clonedEl.style.maxHeight = 'none';
           clonedEl.style.overflow = 'visible';
           clonedEl.style.position = 'relative';
@@ -737,64 +765,71 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
           clonedEl.style.left = '0';
           clonedEl.style.transform = 'none';
           clonedEl.style.margin = '0 auto';
-          clonedEl.style.padding = '32px 36px';
+          clonedEl.style.padding = '36px 40px 48px 40px';
           clonedEl.style.boxSizing = 'border-box';
           clonedEl.style.background = 'linear-gradient(135deg, #eaf4fb 0%, #f4fafe 50%, #d6ebf7 100%)';
           clonedEl.style.backgroundColor = '#eaf4fb';
           clonedEl.style.color = '#0f2942';
 
-          // 7. Force branches row to be flex row across full width
+          // Force branches row to be 3-column row with fixed non-squishing widths
           const branches = clonedDoc.getElementById('org-chart-branches') as HTMLElement;
           if (branches) {
             branches.style.display = 'flex';
             branches.style.flexDirection = 'row';
+            branches.style.flexWrap = 'nowrap';
             branches.style.justifyContent = 'space-between';
             branches.style.alignItems = 'flex-start';
             branches.style.width = '100%';
-            branches.style.gap = '24px';
+            branches.style.gap = '20px';
             branches.style.boxSizing = 'border-box';
 
             Array.from(branches.children).forEach(child => {
               const bChild = child as HTMLElement;
-              bChild.style.flex = '1 1 0';
-              bChild.style.width = '32%';
+              bChild.style.flex = '0 0 calc(33.333% - 14px)';
+              bChild.style.width = 'calc(33.333% - 14px)';
               bChild.style.minWidth = '0';
+              bChild.style.maxWidth = 'calc(33.333% - 14px)';
               bChild.style.boxSizing = 'border-box';
             });
           }
 
-          // 8. Force bottom 10 systems to be 4-column flex row
+          // Force bottom 10 systems to be 4-column flex row with fixed non-squishing widths
           const systemsGrid = clonedDoc.getElementById('org-chart-10-systems-grid') as HTMLElement;
           if (systemsGrid) {
             systemsGrid.style.display = 'flex';
             systemsGrid.style.flexDirection = 'row';
+            systemsGrid.style.flexWrap = 'nowrap';
             systemsGrid.style.justifyContent = 'space-between';
             systemsGrid.style.alignItems = 'stretch';
             systemsGrid.style.width = '100%';
-            systemsGrid.style.gap = '16px';
+            systemsGrid.style.gap = '14px';
             systemsGrid.style.boxSizing = 'border-box';
 
             Array.from(systemsGrid.children).forEach(child => {
               const cChild = child as HTMLElement;
-              cChild.style.flex = '1 1 0';
-              cChild.style.width = '24%';
+              cChild.style.flex = '0 0 calc(25% - 11px)';
+              cChild.style.width = 'calc(25% - 11px)';
               cChild.style.minWidth = '0';
+              cChild.style.maxWidth = 'calc(25% - 11px)';
               cChild.style.boxSizing = 'border-box';
             });
           }
 
-          // 9. Format legend
+          // Format legend to never wrap or collapse
           const legend = clonedDoc.getElementById('org-chart-legend') as HTMLElement;
           if (legend) {
             legend.style.display = 'flex';
             legend.style.flexDirection = 'row';
+            legend.style.flexWrap = 'nowrap';
             legend.style.justifyContent = 'flex-end';
             legend.style.alignItems = 'center';
-            legend.style.gap = '12px';
+            legend.style.gap = '14px';
             legend.style.width = '100%';
+            legend.style.marginTop = '20px';
+            legend.style.paddingBottom = '10px';
           }
 
-          // 10. Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
+          // Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
           const clonedImgs = clonedEl.querySelectorAll('img');
           clonedImgs.forEach(cImg => {
             if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
@@ -937,9 +972,11 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       const link = document.createElement('a');
       link.download = `Organizational_Chart_BME_PTP_${new Date().toISOString().slice(0, 10)}.png`;
       link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
 
-      if (showToast) showToast('success', 'ดาวน์โหลดภาพ PNG เรียบร้อยแล้ว');
+      if (showToast) showToast('success', 'ดาวน์โหลดภาพ PNG เรียบร้อยแล้ว (สมบูรณ์คมชัด)');
     } catch (err: any) {
       console.error('Export PNG error:', err);
       if (showToast) showToast('error', 'ไม่สามารถสร้างภาพ PNG ได้');
