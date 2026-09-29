@@ -856,20 +856,46 @@ export class StorageService {
     return list;
   }
 
+  /**
+   * Turn whatever Google Sheet gives back into a 'YYYY-MM' vote month.
+   * Sheets often auto-converts a typed "2026-09" into a real DATE, which comes back as
+   * "2026-08-31T17:00:00.000Z" - that never equals "2026-09", so that month's votes silently disappear.
+   */
+  private static toVoteMonthKey(value: any): string {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    let m = raw.match(/^(\d{4})-(\d{1,2})$/);
+    if (m) {
+      let y = parseInt(m[1], 10);
+      if (y > 2500) y -= 543;
+      return `${y}-${m[2].padStart(2, '0')}`;
+    }
+    const d = parseCsiDate(raw);
+    if (d && !isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return '';
+  }
+
   /** Make sure every vote has plain string fields (prevents ".toLowerCase is not a function" crashes that blank the whole site) */
   private static normalizeVotes(list: any): VoteRecord[] {
     if (!Array.isArray(list)) return [];
     return list
       .filter(v => v && typeof v === 'object')
-      .map((v: any) => ({
-        ...v,
-        id: String(v.id ?? ''),
-        timestamp: String(v.timestamp ?? ''),
-        voter: String(v.voter ?? '').trim(),
-        category: String(v.category ?? '').trim(),
-        nominee: String(v.nominee ?? '').trim(),
-        voteMonth: String(v.voteMonth ?? '').trim()
-      }));
+      .map((v: any) => {
+        const timestamp = String(v.timestamp ?? '');
+        // month: use voteMonth if it is usable, otherwise fall back to the month of the timestamp
+        const voteMonth = this.toVoteMonthKey(v.voteMonth) || this.toVoteMonthKey(timestamp);
+        return {
+          ...v,
+          id: String(v.id ?? ''),
+          timestamp,
+          voter: String(v.voter ?? '').trim(),
+          category: String(v.category ?? '').trim(),
+          nominee: String(v.nominee ?? '').trim(),
+          voteMonth
+        };
+      });
   }
 
   static saveVotes(votes: VoteRecord[]): void {
