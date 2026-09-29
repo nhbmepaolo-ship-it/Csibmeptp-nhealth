@@ -54,10 +54,9 @@ export const ActivityLogForm: React.FC<ActivityLogFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const actMonth = activityDate ? activityDate.substring(0, 7) : undefined;
-    const emps = StorageService.getEmployees().filter(e => StorageService.isEmployeeActiveInMonth(e, actMonth));
+    const emps = StorageService.getEmployees().filter(e => e.status === 'active');
     setEmployees(emps);
-  }, [activityDate]);
+  }, []);
 
   useEffect(() => {
     setSelectedUser(currentUser);
@@ -95,6 +94,7 @@ export const ActivityLogForm: React.FC<ActivityLogFormProps> = ({
 
   const handleSubmitActivity = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return; // prevent double submit
 
     if (!currentUser) {
       showToast('error', 'กรุณาล็อกอินด้วยบัญชีพนักงานก่อนบันทึกกิจกรรม');
