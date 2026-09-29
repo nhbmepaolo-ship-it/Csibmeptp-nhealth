@@ -596,9 +596,43 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
         width: exportWidth,
         scrollX: 0,
         scrollY: 0,
-        onclone: (clonedDoc) => {
+        onclone: async (clonedDoc) => {
           // NOTE: html2canvas-pro natively supports oklch/oklab/color-mix, so we must NOT strip them
           // (stripping them turned Tailwind v4 colors transparent).
+
+          // IMPORTANT: html2canvas renders inside a cloned iframe. On production builds the Tailwind CSS is a
+          // <link> file that may not be applied/loaded in that iframe yet, which produces an UNSTYLED chart
+          // (serif font, giant logo, broken layout). So we copy every same-origin CSS rule into an inline <style>
+          // (inline <style> is applied synchronously, no network needed).
+          try {
+            let inlineCss = '';
+            Array.from(document.styleSheets).forEach(sheet => {
+              try {
+                const rules = (sheet as CSSStyleSheet).cssRules;
+                for (let i = 0; i < rules.length; i++) inlineCss += rules[i].cssText + '\n';
+              } catch {
+                // cross-origin stylesheet (e.g. Google Fonts / Font Awesome CDN): its <link> is already in the clone
+              }
+            });
+            if (inlineCss) {
+              const styleEl = clonedDoc.createElement('style');
+              styleEl.setAttribute('data-export-inline-css', '1');
+              styleEl.textContent = inlineCss;
+              clonedDoc.head.appendChild(styleEl);
+            }
+          } catch (e) {
+            console.warn('Inline CSS copy failed:', e);
+          }
+
+          // Wait (max 4s) for web fonts (Sarabun / Font Awesome) to be ready inside the clone
+          try {
+            await Promise.race([
+              (clonedDoc as any).fonts?.ready ?? Promise.resolve(),
+              new Promise(resolve => setTimeout(resolve, 4000))
+            ]);
+          } catch {
+            // ignore
+          }
 
           const clonedEl = clonedDoc.getElementById('org-chart-print-area') as HTMLElement;
           if (!clonedEl) return;
