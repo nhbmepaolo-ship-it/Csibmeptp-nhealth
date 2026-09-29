@@ -54,8 +54,9 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
   const [empSearch, setEmpSearch] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [zoomScale, setZoomScale] = useState<number>(100);
-  const [pdfOrientation, setPdfOrientation] = useState<'portrait' | 'fit-poster' | 'landscape'>('fit-poster');
+  const [pdfOrientation, setPdfOrientation] = useState<'portrait' | 'fit-poster' | 'landscape' | 'multi-page' | 'a3'>('portrait');
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showPngDropdown, setShowPngDropdown] = useState(false);
   const [newTagText, setNewTagText] = useState('');
   const [newTagColor, setNewTagColor] = useState<'blue' | 'purple' | 'orange' | 'green' | 'cyan' | 'indigo' | 'amber'>('blue');
 
@@ -643,41 +644,166 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
 
   // Capture canvas logic with exact visual preview match and zero blank top space
   // Capture canvas logic with exact visual preview match, zero top offset, and 100% complete content
-  const captureOrgChartCanvas = async (element: HTMLElement) => {
-    // 1. Save scroll states of container and window to prevent offset shifts
-    const prevScrollTop = scrollContainerRef.current ? scrollContainerRef.current.scrollTop : 0;
-    const prevScrollLeft = scrollContainerRef.current ? scrollContainerRef.current.scrollLeft : 0;
-    const prevWindowX = window.scrollX || window.pageXOffset || 0;
-    const prevWindowY = window.scrollY || window.pageYOffset || 0;
+  // Capture canvas logic with exact visual preview match, zero top offset, and 100% complete content
+  const captureOrgChartCanvas = async (element: HTMLElement, scale: number = 1): Promise<HTMLCanvasElement> => {
+    // 1. Prepare images on live element first so all images are already cached/dataURLs
+    await prepareChartImagesForExport(element);
 
-    // Reset scroll to 0 so bounding rect calculations in html2canvas are perfectly aligned at the top
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-      scrollContainerRef.current.scrollLeft = 0;
+    // 2. Create clean, isolated container attached directly to body at fixed (0, 0)
+    const exportContainer = document.createElement('div');
+    exportContainer.style.position = 'fixed';
+    exportContainer.style.top = '0';
+    exportContainer.style.left = '0';
+    exportContainer.style.width = '1400px';
+    exportContainer.style.minWidth = '1400px';
+    exportContainer.style.maxWidth = '1400px';
+    exportContainer.style.height = 'auto';
+    exportContainer.style.zIndex = '-99999';
+    exportContainer.style.opacity = '1';
+    exportContainer.style.pointerEvents = 'none';
+    exportContainer.style.backgroundColor = '#eaf4fb';
+    exportContainer.style.margin = '0';
+    exportContainer.style.padding = '0';
+    exportContainer.style.overflow = 'visible';
+
+    // 3. Clone the chart element into exportContainer
+    const chartClone = element.cloneNode(true) as HTMLElement;
+    chartClone.id = 'org-chart-export-clone';
+    chartClone.style.transform = 'none';
+    chartClone.style.transition = 'none';
+    chartClone.style.position = 'relative';
+    chartClone.style.top = '0';
+    chartClone.style.left = '0';
+    chartClone.style.margin = '0 auto';
+    chartClone.style.width = '1400px';
+    chartClone.style.minWidth = '1400px';
+    chartClone.style.maxWidth = '1400px';
+    chartClone.style.height = 'auto';
+    chartClone.style.boxSizing = 'border-box';
+    chartClone.style.padding = '32px 36px 36px 36px';
+
+    // Remove glowing ambient blur blobs and interactive buttons from clone
+    chartClone.querySelectorAll('.blur-3xl').forEach(b => b.remove());
+    chartClone.querySelectorAll('button').forEach(btn => btn.remove());
+
+    // Ensure branches row is a 3-column row with fixed non-squishing widths
+    const branches = chartClone.querySelector('#org-chart-branches') as HTMLElement;
+    if (branches) {
+      branches.style.display = 'flex';
+      branches.style.flexDirection = 'row';
+      branches.style.flexWrap = 'nowrap';
+      branches.style.justifyContent = 'space-between';
+      branches.style.alignItems = 'flex-start';
+      branches.style.width = '100%';
+      branches.style.gap = '20px';
+      branches.style.boxSizing = 'border-box';
+
+      Array.from(branches.children).forEach(child => {
+        const bChild = child as HTMLElement;
+        bChild.style.flex = '0 0 calc(33.333% - 14px)';
+        bChild.style.width = 'calc(33.333% - 14px)';
+        bChild.style.minWidth = '0';
+        bChild.style.maxWidth = 'calc(33.333% - 14px)';
+        bChild.style.boxSizing = 'border-box';
+      });
     }
-    window.scrollTo(0, 0);
 
-    const originalTransform = element.style.transform;
-    const originalTransition = element.style.transition;
-    element.style.transition = 'none';
-    element.style.transform = 'none';
+    // Ensure bottom 10 systems is a 4-column flex row with fixed non-squishing widths
+    const systemsGrid = chartClone.querySelector('#org-chart-10-systems-grid') as HTMLElement;
+    if (systemsGrid) {
+      systemsGrid.style.display = 'flex';
+      systemsGrid.style.flexDirection = 'row';
+      systemsGrid.style.flexWrap = 'nowrap';
+      systemsGrid.style.justifyContent = 'space-between';
+      systemsGrid.style.alignItems = 'stretch';
+      systemsGrid.style.width = '100%';
+      systemsGrid.style.gap = '14px';
+      systemsGrid.style.boxSizing = 'border-box';
 
-    // Force layout update after resetting transform
-    void element.offsetHeight;
+      Array.from(systemsGrid.children).forEach(child => {
+        const cChild = child as HTMLElement;
+        cChild.style.flex = '0 0 calc(25% - 11px)';
+        cChild.style.width = 'calc(25% - 11px)';
+        cChild.style.minWidth = '0';
+        cChild.style.maxWidth = 'calc(25% - 11px)';
+        cChild.style.boxSizing = 'border-box';
+      });
+    }
+
+    // Ensure legend never wraps
+    const legend = chartClone.querySelector('#org-chart-legend') as HTMLElement;
+    if (legend) {
+      legend.style.display = 'flex';
+      legend.style.flexDirection = 'row';
+      legend.style.flexWrap = 'nowrap';
+      legend.style.justifyContent = 'flex-end';
+      legend.style.alignItems = 'center';
+      legend.style.gap = '14px';
+      legend.style.width = '100%';
+      legend.style.marginTop = '20px';
+      legend.style.paddingBottom = '10px';
+    }
+
+    // Ensure circular avatars remain exact
+    const clonedImgs = chartClone.querySelectorAll('img');
+    clonedImgs.forEach(cImg => {
+      if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
+        cImg.style.width = '74px';
+        cImg.style.height = '74px';
+        cImg.style.minWidth = '74px';
+        cImg.style.minHeight = '74px';
+        cImg.style.maxWidth = '74px';
+        cImg.style.maxHeight = '74px';
+        cImg.style.borderRadius = '50%';
+        cImg.style.objectFit = 'cover';
+        cImg.style.display = 'block';
+        cImg.style.margin = 'auto';
+
+        if (cImg.parentElement) {
+          cImg.parentElement.style.width = '80px';
+          cImg.parentElement.style.height = '80px';
+          cImg.parentElement.style.minWidth = '80px';
+          cImg.parentElement.style.minHeight = '80px';
+          cImg.parentElement.style.maxWidth = '80px';
+          cImg.parentElement.style.maxHeight = '80px';
+          cImg.parentElement.style.borderRadius = '50%';
+          cImg.parentElement.style.overflow = 'hidden';
+          cImg.parentElement.style.boxSizing = 'border-box';
+          cImg.parentElement.style.position = 'relative';
+        }
+      }
+    });
+
+    exportContainer.appendChild(chartClone);
+    document.body.appendChild(exportContainer);
+
+    // Force layout computation on clone
+    void chartClone.offsetHeight;
 
     try {
-      await prepareChartImagesForExport(element);
+      const exportWidth = 1400;
+      let exportHeight = Math.ceil(chartClone.scrollHeight || chartClone.offsetHeight || 2300);
+      const legendEl = chartClone.querySelector('#org-chart-legend') as HTMLElement;
+      if (legendEl) {
+        const bottomPos = legendEl.offsetTop + legendEl.offsetHeight + 40;
+        if (bottomPos > exportHeight) {
+          exportHeight = bottomPos;
+        }
+      }
+      exportHeight = Math.max(exportHeight, 2200);
 
-      return await html2canvas(element, {
-        scale: 2,
+      const canvas = await html2canvas(chartClone, {
+        scale: scale,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#eaf4fb',
         logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        onclone: (clonedDoc, clonedElement) => {
-          // 1. Sanitize all <style> tags in cloned document to remove any oklab/oklch/color-mix CSS declarations that break html2canvas
+        width: exportWidth,
+        height: exportHeight,
+        windowWidth: exportWidth,
+        windowHeight: Math.max(exportHeight + 300, 3500),
+        onclone: (clonedDoc) => {
+          // Sanitize modern CSS colors that can break canvas rendering
           const styleTags = clonedDoc.querySelectorAll('style');
           styleTags.forEach(style => {
             if (style.textContent) {
@@ -687,163 +813,37 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)');
             }
           });
-
-          // 2. Sanitize inline style attributes across all elements in cloned document
-          const allClonedNodes = clonedDoc.querySelectorAll('*');
-          allClonedNodes.forEach(node => {
-            const el = node as HTMLElement;
-            const styleAttr = el.getAttribute('style');
-            if (styleAttr && (styleAttr.includes('oklab') || styleAttr.includes('oklch') || styleAttr.includes('color-mix'))) {
-              el.setAttribute(
-                'style',
-                styleAttr
-                  .replace(/oklab\([^)]+\)/g, 'rgba(0,0,0,0)')
-                  .replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)')
-                  .replace(/color-mix\([^)]+\)/g, 'rgba(0,0,0,0)')
-              );
-            }
-          });
-
-          // 3. Locate target chart container in cloned document without detaching from tree
-          const targetEl = (clonedElement || clonedDoc.getElementById('org-chart-print-area')) as HTMLElement;
-          if (!targetEl) return;
-
-          // Remove ambient glowing blur circles that expand bounding box beyond boundaries
-          const blurBlobs = targetEl.querySelectorAll('.blur-3xl');
-          blurBlobs.forEach(b => (b as HTMLElement).remove());
-
-          // Hide interactive action buttons in export
-          const buttons = targetEl.querySelectorAll('button');
-          buttons.forEach(btn => {
-            (btn as HTMLElement).style.display = 'none';
-          });
-
-          // Ensure branches row is a 3-column row with fixed non-squishing widths
-          const branches = clonedDoc.getElementById('org-chart-branches') as HTMLElement;
-          if (branches) {
-            branches.style.display = 'flex';
-            branches.style.flexDirection = 'row';
-            branches.style.flexWrap = 'nowrap';
-            branches.style.justifyContent = 'space-between';
-            branches.style.alignItems = 'flex-start';
-            branches.style.width = '100%';
-            branches.style.gap = '20px';
-            branches.style.boxSizing = 'border-box';
-
-            Array.from(branches.children).forEach(child => {
-              const bChild = child as HTMLElement;
-              bChild.style.flex = '0 0 calc(33.333% - 14px)';
-              bChild.style.width = 'calc(33.333% - 14px)';
-              bChild.style.minWidth = '0';
-              bChild.style.maxWidth = 'calc(33.333% - 14px)';
-              bChild.style.boxSizing = 'border-box';
-            });
-          }
-
-          // Ensure bottom 10 systems is a 4-column flex row with fixed non-squishing widths
-          const systemsGrid = clonedDoc.getElementById('org-chart-10-systems-grid') as HTMLElement;
-          if (systemsGrid) {
-            systemsGrid.style.display = 'flex';
-            systemsGrid.style.flexDirection = 'row';
-            systemsGrid.style.flexWrap = 'nowrap';
-            systemsGrid.style.justifyContent = 'space-between';
-            systemsGrid.style.alignItems = 'stretch';
-            systemsGrid.style.width = '100%';
-            systemsGrid.style.gap = '14px';
-            systemsGrid.style.boxSizing = 'border-box';
-
-            Array.from(systemsGrid.children).forEach(child => {
-              const cChild = child as HTMLElement;
-              cChild.style.flex = '0 0 calc(25% - 11px)';
-              cChild.style.width = 'calc(25% - 11px)';
-              cChild.style.minWidth = '0';
-              cChild.style.maxWidth = 'calc(25% - 11px)';
-              cChild.style.boxSizing = 'border-box';
-            });
-          }
-
-          // Format legend to never wrap or collapse
-          const legend = clonedDoc.getElementById('org-chart-legend') as HTMLElement;
-          if (legend) {
-            legend.style.display = 'flex';
-            legend.style.flexDirection = 'row';
-            legend.style.flexWrap = 'nowrap';
-            legend.style.justifyContent = 'flex-end';
-            legend.style.alignItems = 'center';
-            legend.style.gap = '14px';
-            legend.style.width = '100%';
-            legend.style.marginTop = '20px';
-            legend.style.paddingBottom = '10px';
-          }
-
-          // Ensure all avatar images in clonedDoc stay strictly 74px inside 80px circular container
-          const clonedImgs = targetEl.querySelectorAll('img');
-          clonedImgs.forEach(cImg => {
-            if (!cImg.alt?.includes('Logo') && !cImg.src?.includes('logo')) {
-              cImg.style.width = '74px';
-              cImg.style.height = '74px';
-              cImg.style.minWidth = '74px';
-              cImg.style.minHeight = '74px';
-              cImg.style.maxWidth = '74px';
-              cImg.style.maxHeight = '74px';
-              cImg.style.borderRadius = '50%';
-              cImg.style.objectFit = 'cover';
-              cImg.style.display = 'block';
-              cImg.style.margin = 'auto';
-
-              if (cImg.parentElement) {
-                cImg.parentElement.style.width = '80px';
-                cImg.parentElement.style.height = '80px';
-                cImg.parentElement.style.minWidth = '80px';
-                cImg.parentElement.style.minHeight = '80px';
-                cImg.parentElement.style.maxWidth = '80px';
-                cImg.parentElement.style.maxHeight = '80px';
-                cImg.parentElement.style.borderRadius = '50%';
-                cImg.parentElement.style.overflow = 'hidden';
-                cImg.parentElement.style.boxSizing = 'border-box';
-                cImg.parentElement.style.position = 'relative';
-              }
-            }
-          });
         }
       });
+
+      return canvas;
     } finally {
-      element.style.transform = originalTransform;
-      element.style.transition = originalTransition;
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = prevScrollTop;
-        scrollContainerRef.current.scrollLeft = prevScrollLeft;
+      if (exportContainer.parentNode) {
+        exportContainer.parentNode.removeChild(exportContainer);
       }
-      window.scrollTo(prevWindowX, prevWindowY);
-
-      const imgs = Array.from(element.querySelectorAll<HTMLImageElement>('img[data-original-src]'));
-      imgs.forEach(img => {
-        const orig = img.getAttribute('data-original-src');
-        if (orig) {
-          img.src = orig;
-          img.removeAttribute('data-original-src');
-        }
-      });
     }
   };
 
-  // PDF Export Handler supporting Portrait (A4 - default), Fit-Poster (zero margin), and Landscape (A4)
-  const handleExportPDF = async (chosenOrientation: 'portrait' | 'fit-poster' | 'landscape' = pdfOrientation) => {
+  // PDF Export Handler supporting Portrait (A4 Standard), Multi-Page (A4), A3 Poster, Landscape (A4), and Fit-Poster
+  const handleExportPDF = async (chosenOrientation: 'portrait' | 'fit-poster' | 'landscape' | 'multi-page' | 'a3' = pdfOrientation) => {
     if (!chartRef.current) return;
     setIsExporting(true);
     setShowExportDropdown(false);
 
     try {
       const modeLabels: Record<string, string> = {
-        'portrait': 'แนวตั้ง A4 (แนะนำเต็มแผ่น)',
-        'fit-poster': 'พอดีสัดส่วนผังจริง (ไร้ขอบขาว)',
-        'landscape': 'แนวนอน A4'
+        'portrait': 'A4 แผ่นเดียว (แนวตั้ง มาตรฐาน)',
+        'multi-page': 'A4 ต่อเนื่อง 2 หน้า (สำหรับพิมพ์)',
+        'a3': 'A3 ขนาดใหญ่ (โปสเตอร์ติดบอร์ด)',
+        'landscape': 'A4 แนวนอน (Landscape)',
+        'fit-poster': 'ตามสัดส่วนภาพจริง (Fit Ratio)'
       };
-      const modeLabel = modeLabels[chosenOrientation] || 'แนวตั้ง A4';
+      const modeLabel = modeLabels[chosenOrientation] || 'A4 มาตรฐาน';
 
-      if (showToast) showToast('success', `กำลังสร้างไฟล์ PDF ${modeLabel} ความละเอียดสูง...`);
+      if (showToast) showToast('success', `กำลังสร้างไฟล์ PDF ${modeLabel} คมชัดสูง...`);
 
-      const canvas = await captureOrgChartCanvas(chartRef.current);
+      // Capture at scale 2 for razor sharp text and vectors in PDF
+      const canvas = await captureOrgChartCanvas(chartRef.current, 2);
       const imgData = canvas.toDataURL('image/png');
 
       const imgWidth = canvas.width;
@@ -851,52 +851,93 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
 
       let pdf: jsPDF;
 
-      if (chosenOrientation === 'fit-poster') {
-        // Fit exactly to poster dimensions with zero margin
-        // Base width 210mm (like A4 width), calculate height proportionally
-        const targetPdfWidth = 210;
-        const targetPdfHeight = Math.round((imgHeight / imgWidth) * targetPdfWidth * 10) / 10;
-        const isTall = targetPdfHeight > targetPdfWidth;
-
-        pdf = new jsPDF({
-          orientation: isTall ? 'portrait' : 'landscape',
-          unit: 'mm',
-          format: [targetPdfWidth, targetPdfHeight]
-        });
-
-        pdf.addImage(imgData, 'PNG', 0, 0, targetPdfWidth, targetPdfHeight);
-      } else if (chosenOrientation === 'landscape') {
-        // Standard A4 Landscape
-        pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4'
-        });
-        const pdfWidth = pdf.internal.pageSize.getWidth(); // 297mm
-        const pdfHeight = pdf.internal.pageSize.getHeight(); // 210mm
-        const margin = 4;
-        const ratio = Math.min((pdfWidth - margin * 2) / imgWidth, (pdfHeight - margin * 2) / imgHeight);
-        const renderW = imgWidth * ratio;
-        const renderH = imgHeight * ratio;
-        const xOffset = (pdfWidth - renderW) / 2;
-        const yOffset = (pdfHeight - renderH) / 2;
-        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderW, renderH);
-      } else {
-        // Default: Standard A4 Portrait (Matches this tall vertical chart poster perfectly!)
+      if (chosenOrientation === 'portrait') {
+        // Standard A4 Portrait (210 x 297 mm) - Scale to fit comfortably with clean margins
         pdf = new jsPDF({
           orientation: 'portrait',
           unit: 'mm',
           format: 'a4'
         });
-        const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-        const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-        const margin = 4;
-        const ratio = Math.min((pdfWidth - margin * 2) / imgWidth, (pdfHeight - margin * 2) / imgHeight);
-        const renderW = imgWidth * ratio;
-        const renderH = imgHeight * ratio;
-        const xOffset = (pdfWidth - renderW) / 2;
-        const yOffset = (pdfHeight - renderH) / 2;
-        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderW, renderH);
+        const pageW = 210;
+        const pageH = 297;
+        const marginX = 8;
+        const marginY = 8;
+        const printableW = pageW - marginX * 2; // 194 mm
+        const printableH = pageH - marginY * 2; // 281 mm
+        const scaleFactor = Math.min(printableW / imgWidth, printableH / imgHeight);
+        const renderW = imgWidth * scaleFactor;
+        const renderH = imgHeight * scaleFactor;
+        const xOffset = (pageW - renderW) / 2;
+        const yOffset = (pageH - renderH) / 2;
+        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderW, renderH, undefined, 'FAST');
+      } else if (chosenOrientation === 'multi-page') {
+        // Multi-page A4 Portrait: splits across 2 pages with clean readable sizing
+        pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+        const pageW = 210;
+        const pageH = 297;
+        const margin = 8;
+        const printableW = pageW - margin * 2; // 194 mm
+        const printableH = pageH - margin * 2; // 281 mm
+        const totalScaledH = (imgHeight / imgWidth) * printableW;
+        const numPages = Math.max(1, Math.ceil(totalScaledH / printableH));
+
+        for (let i = 0; i < numPages; i++) {
+          if (i > 0) pdf.addPage('a4', 'portrait');
+          const yPos = margin - (i * printableH);
+          pdf.addImage(imgData, 'PNG', margin, yPos, printableW, totalScaledH, undefined, 'FAST');
+        }
+      } else if (chosenOrientation === 'a3') {
+        // Standard A3 Portrait (297 x 420 mm) - Perfect for Department Wall Poster
+        pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a3'
+        });
+        const pageW = 297;
+        const pageH = 420;
+        const marginX = 10;
+        const marginY = 10;
+        const printableW = pageW - marginX * 2; // 277 mm
+        const printableH = pageH - marginY * 2; // 400 mm
+        const scaleFactor = Math.min(printableW / imgWidth, printableH / imgHeight);
+        const renderW = imgWidth * scaleFactor;
+        const renderH = imgHeight * scaleFactor;
+        const xOffset = (pageW - renderW) / 2;
+        const yOffset = (pageH - renderH) / 2;
+        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderW, renderH, undefined, 'FAST');
+      } else if (chosenOrientation === 'landscape') {
+        // Standard A4 Landscape (297 x 210 mm)
+        pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4'
+        });
+        const pageW = 297;
+        const pageH = 210;
+        const marginX = 8;
+        const marginY = 8;
+        const printableW = pageW - marginX * 2;
+        const printableH = pageH - marginY * 2;
+        const scaleFactor = Math.min(printableW / imgWidth, printableH / imgHeight);
+        const renderW = imgWidth * scaleFactor;
+        const renderH = imgHeight * scaleFactor;
+        const xOffset = (pageW - renderW) / 2;
+        const yOffset = (pageH - renderH) / 2;
+        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderW, renderH, undefined, 'FAST');
+      } else {
+        // Fit-Poster: Proportional dimensions with zero outer margins
+        const targetPdfWidth = 210;
+        const targetPdfHeight = Math.round((imgHeight / imgWidth) * targetPdfWidth * 10) / 10;
+        pdf = new jsPDF({
+          orientation: targetPdfHeight > targetPdfWidth ? 'portrait' : 'landscape',
+          unit: 'mm',
+          format: [targetPdfWidth, targetPdfHeight]
+        });
+        pdf.addImage(imgData, 'PNG', 0, 0, targetPdfWidth, targetPdfHeight, undefined, 'FAST');
       }
 
       const dateStr = new Date().toISOString().slice(0, 10);
@@ -905,31 +946,32 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       if (showToast) showToast('success', `ดาวน์โหลดไฟล์ PDF ${modeLabel} สำเร็จเรียบร้อย!`);
     } catch (err: any) {
       console.error('Export PDF error:', err);
-      if (showToast) showToast('error', `เกิดข้อผิดพลาดในการดาวน์โหลด PDF: ${err?.message || ''} กำลังใช้วิธีพิมพ์เอกสารแทน...`);
-      window.print();
+      if (showToast) showToast('error', `เกิดข้อผิดพลาดในการดาวน์โหลด PDF: ${err?.message || ''}`);
     } finally {
       setIsExporting(false);
     }
   };
 
-  // PNG Export Handler
-  const handleExportPNG = async () => {
+  // PNG Export Handler supporting 1x (Standard 1400px - exact design size) and 2x (Ultra HD 2800px)
+  const handleExportPNG = async (scale: 1 | 2 = 1) => {
     if (!chartRef.current) return;
     setIsExporting(true);
+    setShowPngDropdown(false);
 
     try {
-      if (showToast) showToast('success', 'กำลังแปลงรูปภาพ PNG ความละเอียดสูง...');
+      const sizeLabel = scale === 1 ? 'ขนาดมาตรฐาน (1400px ตามผังจริง)' : 'ความละเอียดสูง 2x (2800px Retina)';
+      if (showToast) showToast('success', `กำลังแปลงรูปภาพ PNG ${sizeLabel}...`);
 
-      const canvas = await captureOrgChartCanvas(chartRef.current);
+      const canvas = await captureOrgChartCanvas(chartRef.current, scale);
 
       const link = document.createElement('a');
-      link.download = `Organizational_Chart_BME_PTP_${new Date().toISOString().slice(0, 10)}.png`;
+      link.download = `Organizational_Chart_BME_PTP_${scale === 1 ? '1400px' : '2800px'}_${new Date().toISOString().slice(0, 10)}.png`;
       link.href = canvas.toDataURL('image/png');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      if (showToast) showToast('success', 'ดาวน์โหลดภาพ PNG เรียบร้อยแล้ว (สมบูรณ์คมชัด)');
+      if (showToast) showToast('success', `ดาวน์โหลดภาพ PNG (${sizeLabel}) เรียบร้อยแล้ว`);
     } catch (err: any) {
       console.error('Export PNG error:', err);
       if (showToast) showToast('error', 'ไม่สามารถสร้างภาพ PNG ได้');
@@ -1296,14 +1338,69 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             </button>
           </div>
 
-          <button
-            onClick={handleExportPNG}
-            disabled={isExporting}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-400/40 transition-all flex items-center gap-2"
-          >
-            <i className="fa-solid fa-file-image"></i>
-            <span>ส่งออก PNG</span>
-          </button>
+          {/* PNG Export Button with Size Dropdown */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => handleExportPNG(1)}
+              disabled={isExporting}
+              className="px-3.5 py-2 rounded-l-xl text-xs font-bold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-400/40 transition-all flex items-center gap-1.5"
+              title="ดาวน์โหลดภาพ PNG ขนาดมาตรฐาน 1400px ตามผังจริง"
+            >
+              <i className="fa-solid fa-file-image"></i>
+              <span>ส่งออก PNG (1400px)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPngDropdown(!showPngDropdown);
+                setShowExportDropdown(false);
+              }}
+              className="px-2 py-2 rounded-r-xl border-l border-indigo-400/30 bg-indigo-600/40 hover:bg-indigo-600/60 text-indigo-200 transition-colors"
+              title="เลือกขนาด PNG"
+            >
+              <i className="fa-solid fa-chevron-down text-[10px]"></i>
+            </button>
+
+            {showPngDropdown && (
+              <div className="absolute top-full left-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 text-xs font-th space-y-1 backdrop-blur-md">
+                <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                  เลือกขนาดภาพ PNG
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleExportPNG(1)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <i className="fa-solid fa-image text-sky-400 text-base"></i>
+                    <div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>ขนาดมาตรฐาน (1400px)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-300">ตามผังจริง</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">สัดส่วน 1:1 ขนาดไฟล์กำลังดี ส่งไลน์ / สไลด์ได้ทันที</div>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportPNG(2)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <i className="fa-solid fa-wand-magic-sparkles text-amber-400 text-base"></i>
+                    <div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>ความละเอียดสูง 2x (2800px)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300">Ultra HD</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">คมชัดระดับ Retina สำหรับพิมพ์ป้าย / โปสเตอร์</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* PDF Export Button with Orientation Selection Dropdown */}
           <div className="relative flex items-center">
@@ -1311,7 +1408,7 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
               onClick={() => handleExportPDF(pdfOrientation)}
               disabled={isExporting}
               className="px-4 py-2 rounded-l-xl text-xs font-extrabold bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-500/20 hover:from-sky-400 hover:to-indigo-500 transition-all flex items-center gap-2"
-              title={`ดาวน์โหลด PDF (${pdfOrientation === 'portrait' ? 'แนวตั้ง A4 เต็มหน้า' : pdfOrientation === 'fit-poster' ? 'พอดีผังจริง ไร้ขอบขาว' : 'แนวนอน A4'})`}
+              title={`ดาวน์โหลด PDF (${pdfOrientation === 'portrait' ? 'A4 แผ่นเดียว แนวตั้ง' : pdfOrientation === 'multi-page' ? 'A4 ต่อเนื่อง 2 หน้า' : pdfOrientation === 'a3' ? 'A3 โปสเตอร์แผ่นใหญ่' : pdfOrientation === 'fit-poster' ? 'พอดีผังจริง' : 'แนวนอน A4'})`}
             >
               {isExporting ? (
                 <i className="fa-solid fa-spinner fa-spin"></i>
@@ -1319,24 +1416,29 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                 <i className="fa-solid fa-file-pdf"></i>
               )}
               <span>
-                ดาวน์โหลด PDF {pdfOrientation === 'portrait' ? '(แนวตั้ง A4)' : pdfOrientation === 'fit-poster' ? '(พอดีผัง)' : '(แนวนอน)'}
+                ดาวน์โหลด PDF {pdfOrientation === 'portrait' ? '(A4 แผ่นเดียว)' : pdfOrientation === 'multi-page' ? '(A4 2 หน้า)' : pdfOrientation === 'a3' ? '(A3 โปสเตอร์)' : pdfOrientation === 'landscape' ? '(แนวนอน)' : '(พอดีผัง)'}
               </span>
             </button>
             <button
               type="button"
-              onClick={() => setShowExportDropdown(!showExportDropdown)}
+              onClick={() => {
+                setShowExportDropdown(!showExportDropdown);
+                setShowPngDropdown(false);
+              }}
               className="px-2.5 py-2 rounded-r-xl border-l border-white/20 bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-              title="เลือกแนวเอกสาร PDF (แนวตั้ง / พอดีผัง / แนวนอน)"
+              title="เลือกขนาดและรูปแบบเอกสาร PDF"
             >
               <i className="fa-solid fa-chevron-down text-[10px]"></i>
             </button>
 
             {/* Dropdown Menu for PDF Orientation */}
             {showExportDropdown && (
-              <div className="absolute top-full right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 text-xs font-th space-y-1 backdrop-blur-md">
+              <div className="absolute top-full right-0 mt-2 w-84 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 text-xs font-th space-y-1 backdrop-blur-md">
                 <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                  เลือกแนวและรูปแบบเอกสาร PDF
+                  เลือกขนาดกระดาษและรูปแบบ PDF
                 </div>
+
+                {/* Option 1: Single Page A4 Portrait */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1351,35 +1453,64 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                     <i className="fa-solid fa-file-lines text-sky-400 text-base"></i>
                     <div>
                       <div className="font-bold flex items-center gap-1.5">
-                        <span>แนวตั้ง A4 (แนะนำ)</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300">พอดีผัง</span>
+                        <span>A4 แผ่นเดียว (แนวตั้ง - แนะนำ)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-300">มาตรฐาน</span>
                       </div>
-                      <div className="text-[10px] text-slate-400 font-normal">เต็มแผ่น A4 ไม่เหลือขอบขาวข้าง</div>
+                      <div className="text-[10px] text-slate-400 font-normal">สัดส่วนพอดี 1 หน้ากระดาษ A4 ไม่เพี้ยน ไม่ล้นขอบ</div>
                     </div>
                   </div>
                   {pdfOrientation === 'portrait' && <i className="fa-solid fa-check text-sky-400"></i>}
                 </button>
 
+                {/* Option 2: Multi-Page A4 Continuous */}
                 <button
                   type="button"
                   onClick={() => {
-                    setPdfOrientation('fit-poster');
-                    handleExportPDF('fit-poster');
+                    setPdfOrientation('multi-page');
+                    handleExportPDF('multi-page');
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors ${
-                    pdfOrientation === 'fit-poster' ? 'bg-sky-500/20 text-sky-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                    pdfOrientation === 'multi-page' ? 'bg-indigo-500/20 text-indigo-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <i className="fa-solid fa-crop-simple text-emerald-400 text-base"></i>
+                    <i className="fa-solid fa-copy text-indigo-400 text-base"></i>
                     <div>
-                      <div className="font-bold">พอดีขนาดผังจริง (Poster)</div>
-                      <div className="text-[10px] text-slate-400 font-normal">ตัดขอบพอดีกรอบผัง 100% ไร้ขอบขาวรอบนอก</div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>A4 ต่อเนื่อง 2 หน้า (สำหรับพิมพ์อ่าน)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300">ตัวใหญ่ชัด</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">แบ่ง 2 แผ่น A4 พิมพ์ติดบอร์ด ตัวหนังสือใหญ่ คมชัด</div>
                     </div>
                   </div>
-                  {pdfOrientation === 'fit-poster' && <i className="fa-solid fa-check text-emerald-400"></i>}
+                  {pdfOrientation === 'multi-page' && <i className="fa-solid fa-check text-indigo-400"></i>}
                 </button>
 
+                {/* Option 3: A3 Poster */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfOrientation('a3');
+                    handleExportPDF('a3');
+                  }}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors ${
+                    pdfOrientation === 'a3' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <i className="fa-solid fa-newspaper text-emerald-400 text-base"></i>
+                    <div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>A3 โปสเตอร์แผ่นใหญ่ (297 x 420 mm)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300">บอร์ดแผนก</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">กระดาษ A3 แผ่นใหญ่ เหมาะสำหรับพิมพ์ติดบอร์ด BME</div>
+                    </div>
+                  </div>
+                  {pdfOrientation === 'a3' && <i className="fa-solid fa-check text-emerald-400"></i>}
+                </button>
+
+                {/* Option 4: A4 Landscape */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1387,17 +1518,41 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
                     handleExportPDF('landscape');
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors ${
-                    pdfOrientation === 'landscape' ? 'bg-sky-500/20 text-sky-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                    pdfOrientation === 'landscape' ? 'bg-amber-500/20 text-amber-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <i className="fa-solid fa-desktop text-amber-400 text-base"></i>
                     <div>
                       <div className="font-bold">แนวนอน A4 (Landscape)</div>
-                      <div className="text-[10px] text-slate-400 font-normal">สำหรับใส่ในสไลด์นำเสนอ</div>
+                      <div className="text-[10px] text-slate-400 font-normal">สำหรับใส่ในสไลด์นำเสนอ PowerPoint</div>
                     </div>
                   </div>
                   {pdfOrientation === 'landscape' && <i className="fa-solid fa-check text-amber-400"></i>}
+                </button>
+
+                {/* Option 5: Fit-Poster */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfOrientation('fit-poster');
+                    handleExportPDF('fit-poster');
+                  }}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors ${
+                    pdfOrientation === 'fit-poster' ? 'bg-purple-500/20 text-purple-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <i className="fa-solid fa-crop-simple text-purple-400 text-base"></i>
+                    <div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>ตามสัดส่วนภาพจริง (Fit Ratio)</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300">ไร้ขอบขาว</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">ความสูงปรับตามภาพจริง ไร้ขอบขาวรอบนอก</div>
+                    </div>
+                  </div>
+                  {pdfOrientation === 'fit-poster' && <i className="fa-solid fa-check text-purple-400"></i>}
                 </button>
               </div>
             )}

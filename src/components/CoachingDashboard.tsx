@@ -375,60 +375,265 @@ export function CoachingDashboard({ currentUser, showToast }: CoachingDashboardP
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Summary KPI Cards - High Contrast, Vibrant, Crystal Clear & Ultra-Readable */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 sm:gap-4">
         {/* Total People */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/70 border-white/10'
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-slate-300 shadow-slate-200/70 hover:border-slate-400'
+            : 'bg-slate-900 border-slate-700 shadow-slate-950/50 hover:border-slate-600'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>พนักงานทั้งหมด</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>{stats.totalPeople} <span className="text-xs font-normal text-slate-400">คน</span></div>
-          <div className="text-[10px] text-slate-400">แผนก BME PTP</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-2">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              }`}>
+                <i className="fa-solid fa-users text-xs"></i>
+                <span>พนักงานทั้งหมด</span>
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-300'
+              }`}>
+                BME PTP
+              </span>
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2.5 ${
+              isLight ? 'text-slate-900' : 'text-white'
+            }`}>
+              {stats.totalPeople}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>คน</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden mb-1.5">
+              <div className="bg-blue-500 h-full rounded-full w-full"></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>ฐานข้อมูลแผนก</span>
+              <span className={isLight ? 'text-blue-700' : 'text-blue-400'}>100% ครบถ้วน</span>
+            </div>
+          </div>
         </div>
 
-        {/* Bull */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-rose-50/60 border-rose-200 shadow-xs' : 'bg-slate-900/70 border-rose-500/30'
+        {/* Bull (D) */}
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-rose-300 shadow-rose-100/60 hover:border-rose-400'
+            : 'bg-slate-900 border-rose-500/50 shadow-rose-950/40 hover:border-rose-500/80'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>🦬 กระทิง</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-rose-900' : 'text-rose-200'}`}>{stats.bullCount} <span className="text-xs font-normal text-slate-500">คน</span></div>
-          <div className="text-[10px] text-rose-600 font-medium">{stats.bullPct}% ของแผนก</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 to-red-600"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-rose-100 text-rose-900 border border-rose-300' : 'bg-rose-500/25 text-rose-200 border border-rose-500/40'
+              }`}>
+                <span className="text-base leading-none">🦬</span>
+                <span>กระทิง (D)</span>
+              </span>
+            </div>
+            <div className={`text-[11px] font-bold mt-1 ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
+              ลุยงาน • มุ่งเป้า • เด็ดขาด
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2 ${
+              isLight ? 'text-rose-700' : 'text-rose-300'
+            }`}>
+              {stats.bullCount}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-rose-900/60' : 'text-rose-400/80'}`}>คน</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-rose-100 dark:bg-rose-950/70 rounded-full h-2 overflow-hidden mb-1.5">
+              <div
+                className="bg-rose-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Number(stats.bullPct)))}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>สัดส่วน</span>
+              <span className={`px-2 py-0.5 rounded-full font-black ${
+                isLight ? 'bg-rose-100 text-rose-800' : 'bg-rose-500/30 text-rose-200'
+              }`}>
+                {stats.bullPct}%
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Eagle */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-amber-50/60 border-amber-200 shadow-xs' : 'bg-slate-900/70 border-amber-500/30'
+        {/* Eagle (I) */}
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-amber-300 shadow-amber-100/60 hover:border-amber-400'
+            : 'bg-slate-900 border-amber-500/50 shadow-amber-950/40 hover:border-amber-500/80'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>🦅 อินทรีย์</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-amber-900' : 'text-amber-200'}`}>{stats.eagleCount} <span className="text-xs font-normal text-slate-500">คน</span></div>
-          <div className="text-[10px] text-amber-600 font-medium">{stats.eaglePct}% ของแผนก</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 to-orange-500"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-amber-500/25 text-amber-200 border border-amber-500/40'
+              }`}>
+                <span className="text-base leading-none">🦅</span>
+                <span>อินทรีย์ (I)</span>
+              </span>
+            </div>
+            <div className={`text-[11px] font-bold mt-1 ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
+              สร้างสรรค์ • จุดประกาย • ว่องไว
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2 ${
+              isLight ? 'text-amber-700' : 'text-amber-300'
+            }`}>
+              {stats.eagleCount}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-amber-900/60' : 'text-amber-400/80'}`}>คน</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-amber-100 dark:bg-amber-950/70 rounded-full h-2 overflow-hidden mb-1.5">
+              <div
+                className="bg-amber-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Number(stats.eaglePct)))}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>สัดส่วน</span>
+              <span className={`px-2 py-0.5 rounded-full font-black ${
+                isLight ? 'bg-amber-100 text-amber-900' : 'bg-amber-500/30 text-amber-200'
+              }`}>
+                {stats.eaglePct}%
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Bear */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-sky-50/60 border-sky-200 shadow-xs' : 'bg-slate-900/70 border-sky-500/30'
+        {/* Bear (C) */}
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-sky-300 shadow-sky-100/60 hover:border-sky-400'
+            : 'bg-slate-900 border-sky-500/50 shadow-sky-950/40 hover:border-sky-500/80'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-sky-700' : 'text-sky-300'}`}>🐻 หมี</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-sky-900' : 'text-sky-200'}`}>{stats.bearCount} <span className="text-xs font-normal text-slate-500">คน</span></div>
-          <div className="text-[10px] text-sky-600 font-medium">{stats.bearPct}% ของแผนก</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-sky-500 to-blue-600"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-sky-100 text-sky-900 border border-sky-300' : 'bg-sky-500/25 text-sky-200 border border-sky-500/40'
+              }`}>
+                <span className="text-base leading-none">🐻</span>
+                <span>หมี (C)</span>
+              </span>
+            </div>
+            <div className={`text-[11px] font-bold mt-1 ${isLight ? 'text-sky-800' : 'text-sky-300'}`}>
+              วิเคราะห์ • รอบคอบ • เป๊ะระบบ
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2 ${
+              isLight ? 'text-sky-700' : 'text-sky-300'
+            }`}>
+              {stats.bearCount}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-sky-900/60' : 'text-sky-400/80'}`}>คน</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-sky-100 dark:bg-sky-950/70 rounded-full h-2 overflow-hidden mb-1.5">
+              <div
+                className="bg-sky-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Number(stats.bearPct)))}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>สัดส่วน</span>
+              <span className={`px-2 py-0.5 rounded-full font-black ${
+                isLight ? 'bg-sky-100 text-sky-900' : 'bg-sky-500/30 text-sky-200'
+              }`}>
+                {stats.bearPct}%
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Mouse */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-emerald-50/60 border-emerald-200 shadow-xs' : 'bg-slate-900/70 border-emerald-500/30'
+        {/* Mouse (S) */}
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-emerald-300 shadow-emerald-100/60 hover:border-emerald-400'
+            : 'bg-slate-900 border-emerald-500/50 shadow-emerald-950/40 hover:border-emerald-500/80'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>🐭 หนู</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-emerald-900' : 'text-emerald-200'}`}>{stats.mouseCount} <span className="text-xs font-normal text-slate-500">คน</span></div>
-          <div className="text-[10px] text-emerald-600 font-medium">{stats.mousePct}% ของแผนก</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-600"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/40'
+              }`}>
+                <span className="text-base leading-none">🐭</span>
+                <span>หนู (S)</span>
+              </span>
+            </div>
+            <div className={`text-[11px] font-bold mt-1 ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}>
+              สานสัมพันธ์ • รับฟัง • มั่นคง
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2 ${
+              isLight ? 'text-emerald-700' : 'text-emerald-300'
+            }`}>
+              {stats.mouseCount}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-emerald-900/60' : 'text-emerald-400/80'}`}>คน</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-emerald-100 dark:bg-emerald-950/70 rounded-full h-2 overflow-hidden mb-1.5">
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Number(stats.mousePct)))}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>สัดส่วน</span>
+              <span className={`px-2 py-0.5 rounded-full font-black ${
+                isLight ? 'bg-emerald-100 text-emerald-900' : 'bg-emerald-500/30 text-emerald-200'
+              }`}>
+                {stats.mousePct}%
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Total Hours */}
-        <div className={`rounded-2xl p-3.5 flex flex-col justify-between border transition-all ${
-          isLight ? 'bg-indigo-50/80 border-indigo-200 shadow-xs' : 'bg-gradient-to-br from-indigo-950/40 to-slate-900 border-indigo-500/30'
+        <div className={`rounded-2xl p-4 flex flex-col justify-between border-2 transition-all shadow-md relative overflow-hidden ${
+          isLight
+            ? 'bg-white border-purple-300 shadow-purple-100/60 hover:border-purple-400'
+            : 'bg-slate-900 border-purple-500/50 shadow-purple-950/40 hover:border-purple-500/80'
         }`}>
-          <div className={`text-[10px] font-semibold uppercase ${isLight ? 'text-indigo-800' : 'text-indigo-300'}`}>ชั่วโมงสะสมรวม</div>
-          <div className={`text-xl font-bold my-1 ${isLight ? 'text-indigo-900' : 'text-indigo-200'}`}>{stats.totalHours} <span className="text-xs font-normal text-slate-500">ชม.</span></div>
-          <div className="text-[10px] text-indigo-700 font-medium">เฉลี่ย {stats.avgProgress}% ก้าวหน้า</div>
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-indigo-600"></div>
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase ${
+                isLight ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-purple-500/25 text-purple-200 border border-purple-500/40'
+              }`}>
+                <i className="fa-solid fa-clock-rotate-left text-xs"></i>
+                <span>ชั่วโมงสะสมรวม</span>
+              </span>
+            </div>
+            <div className={`text-[11px] font-bold mt-1 ${isLight ? 'text-purple-800' : 'text-purple-300'}`}>
+              พัฒนาทักษะ & Coaching
+            </div>
+            <div className={`text-3xl sm:text-4xl font-black tracking-tight my-2 ${
+              isLight ? 'text-purple-700' : 'text-purple-300'
+            }`}>
+              {stats.totalHours}
+              <span className={`text-sm font-bold ml-1.5 ${isLight ? 'text-purple-900/60' : 'text-purple-400/80'}`}>ชม.</span>
+            </div>
+          </div>
+          <div>
+            <div className="w-full bg-purple-100 dark:bg-purple-950/70 rounded-full h-2 overflow-hidden mb-1.5">
+              <div
+                className="bg-purple-600 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, stats.avgProgress))}%` }}
+              ></div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>ความก้าวหน้า</span>
+              <span className={`px-2 py-0.5 rounded-full font-black ${
+                isLight ? 'bg-purple-100 text-purple-900' : 'bg-purple-500/30 text-purple-200'
+              }`}>
+                เฉลี่ย {stats.avgProgress}%
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
