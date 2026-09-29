@@ -1211,10 +1211,41 @@ export class StorageService {
   }
 
   // Auth helper
+  // Session rules (matches the notice shown in App.tsx): auto-logout after 45 minutes idle, or when the browser tab is closed
+  private static readonly IDLE_TIMEOUT_MS = 45 * 60 * 1000;
+  private static readonly ACTIVITY_KEY = 'csi_bme_last_activity_v1';
+  private static readonly SESSION_FLAG_KEY = 'csi_bme_session_alive_v1';
+
+  /** Called on mouse/keyboard/scroll/touch: records "last active" time (throttled to once every 10s) */
+  static touchUserActivity(): void {
+    try {
+      if (!localStorage.getItem(KEYS.CURRENT_USER)) return;
+      const now = Date.now();
+      const last = Number(localStorage.getItem(this.ACTIVITY_KEY) || 0);
+      if (now - last > 10000) {
+        localStorage.setItem(this.ACTIVITY_KEY, String(now));
+      }
+    } catch {
+      // storage unavailable - ignore
+    }
+  }
+
   static getCurrentUser(): Employee | null {
     const data = localStorage.getItem(KEYS.CURRENT_USER);
     if (!data) return null;
+
     try {
+      // Tab/browser was closed and re-opened -> session flag (sessionStorage) is gone -> require login again
+      if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(this.SESSION_FLAG_KEY)) {
+        this.setCurrentUser(null);
+        return null;
+      }
+      // Idle too long -> log out
+      const last = Number(localStorage.getItem(this.ACTIVITY_KEY) || 0);
+      if (last && Date.now() - last > this.IDLE_TIMEOUT_MS) {
+        this.setCurrentUser(null);
+        return null;
+      }
       return JSON.parse(data);
     } catch {
       return null;
@@ -1224,9 +1255,118 @@ export class StorageService {
   static setCurrentUser(user: Employee | null): void {
     if (user) {
       localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
+      try {
+        localStorage.setItem(this.ACTIVITY_KEY, String(Date.now()));
+        sessionStorage.setItem(this.SESSION_FLAG_KEY, '1');
+      } catch {
+        // ignore
+      }
     } else {
       localStorage.removeItem(KEYS.CURRENT_USER);
+      try {
+        localStorage.removeItem(this.ACTIVITY_KEY);
+        sessionStorage.removeItem(this.SESSION_FLAG_KEY);
+      } catch {
+        // ignore
+      }
     }
+  }
+
+  /**
+   * Is this employee still counted as staff in the given month (YYYY-MM, default = current month)?
+   * - active            -> yes
+   * - resigned/inactive -> yes only for months BEFORE the resignation month (resignedMonth = first month no longer active)
+   *                        no resignedMonth recorded -> no
+   */
+  static isEmployeeActiveInMonth(emp: Employee, monthKey?: string): boolean {
+    if (!emp) return false;
+    const status = emp.status as string;
+    if (status !== 'resigned' && status !== 'inactive') return true;
+
+    const resigned = (emp.resignedMonth || '').trim();
+    if (!resigned) return false;
+
+    let month = (monthKey || '').trim();
+    if (!month) {
+      const now = new Date();
+      month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return month < resigned;
+  }
+
+  /**
+   * Submit all category votes of one voter for one month at once (all-or-nothing).
+   * Re-submitting in the same month replaces the voter's previous choice for each category.
+   */
+  static addVotesBatch(
+    voter: string,
+    voteMonth: string,
+    categoryVotes: Record<string, string>
+  ): { success: boolean; message: string; monthKey?: string } {
+    const entries = Object.entries(categoryVotes || {}).filter(([, nominee]) => !!nominee);
+    if (entries.length === 0) {
+      return { success: false, message: 'กรุณาเลือกผู้ถูกโหวตอย่างน้อย 1 หมวด' };
+    }
+
+    const now = new Date();
+    const nowMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (voteMonth > nowMonthKey) {
+      return { success: false, message: 'ไม่สามารถโหวตล่วงหน้าในเดือนอนาคตได้ กรุณาเลือกเดือนปัจจุบันหรือย้อนหลัง' };
+    }
+
+    const employees = this.getEmployees();
+    const userLower = (voter || '').trim().toLowerCase();
+    const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName === voter);
+
+    // Validate everything first so nothing is saved if one category is invalid
+    for (const [, nominee] of entries) {
+      const nomineeEmp = employees.find(e => e.fullName === nominee || `${e.fullName} (${e.nickname})` === nominee);
+      if (!nomineeEmp) continue;
+      if (!this.isEmployeeActiveInMonth(nomineeEmp, voteMonth)) {
+        return {
+          success: false,
+          message: `พนักงาน ${nomineeEmp.fullName} (${nomineeEmp.nickname}) พ้นสภาพการเป็นพนักงาน/ลาออกแล้ว ไม่สามารถลงคะแนนโหวตได้`
+        };
+      }
+      if (voterEmp && (voterEmp.id === nomineeEmp.id || voterEmp.username.toLowerCase() === nomineeEmp.username.toLowerCase())) {
+        return { success: false, message: 'ไม่สามารถลงคะแนนโหวตให้ตนเองได้' };
+      }
+    }
+
+    const votes = this.getVotes();
+    const isMine = (v: VoteRecord) =>
+      String(v.voter || '').trim().toLowerCase() === userLower && String(v.voteMonth || '') === voteMonth;
+
+    const changed: VoteRecord[] = [];
+    let remaining = votes;
+
+    entries.forEach(([category, nominee], idx) => {
+      const prev = remaining.find(v => isMine(v) && v.category === category);
+      if (prev && prev.nominee === nominee) return; // unchanged - keep as is, do not re-send to the sheet
+
+      remaining = remaining.filter(v => !(isMine(v) && v.category === category));
+      changed.push({
+        id: `vote-${Date.now()}-${idx}`,
+        timestamp: formatInternationalDateTime(now),
+        voter,
+        category,
+        nominee,
+        voteMonth
+      });
+    });
+
+    this.saveVotes([...changed, ...remaining]);
+
+    // Send only NEW/CHANGED votes to Google Sheets (one request per vote)
+    changed.forEach(v => {
+      this.syncDataToGoogleSheet('add_vote', v);
+    });
+
+    return {
+      success: true,
+      message: `บันทึกผลการโหวตรอบเดือน ${voteMonth} เรียบร้อยแล้ว!`,
+      monthKey: voteMonth
+    };
   }
 
   static authenticateUser(user: string, pass: string): { success: boolean; user?: Employee; message?: string } {
