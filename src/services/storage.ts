@@ -823,6 +823,9 @@ export class StorageService {
       }
     }
 
+    // Google Sheet can return numeric cells (e.g. employee code 563770 as a NUMBER) -> force every text field to string
+    list = this.normalizeVotes(list);
+
     // Filter out old mock records with fake users or resigned nominees
     const employees = this.getEmployees();
     const resignedNames = new Set(
@@ -853,14 +856,30 @@ export class StorageService {
     return list;
   }
 
+  /** Make sure every vote has plain string fields (prevents ".toLowerCase is not a function" crashes that blank the whole site) */
+  private static normalizeVotes(list: any): VoteRecord[] {
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter(v => v && typeof v === 'object')
+      .map((v: any) => ({
+        ...v,
+        id: String(v.id ?? ''),
+        timestamp: String(v.timestamp ?? ''),
+        voter: String(v.voter ?? '').trim(),
+        category: String(v.category ?? '').trim(),
+        nominee: String(v.nominee ?? '').trim(),
+        voteMonth: String(v.voteMonth ?? '').trim()
+      }));
+  }
+
   static saveVotes(votes: VoteRecord[]): void {
-    localStorage.setItem(KEYS.VOTES, JSON.stringify(votes));
+    localStorage.setItem(KEYS.VOTES, JSON.stringify(this.normalizeVotes(votes)));
   }
 
   static addVote(voter: string, category: string, nominee: string, voteMonth: string): { success: boolean; message: string; monthKey?: string } {
     const votes = this.getVotes();
     const employees = this.getEmployees();
-    const userLower = voter.trim().toLowerCase();
+    const userLower = String(voter ?? '').trim().toLowerCase();
 
     // Validate voter vs nominee
     const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName === voter);
@@ -886,7 +905,7 @@ export class StorageService {
 
     // Check if user already voted in this category and month
     const existing = votes.find(
-      v => v.voter.toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
+      v => String(v.voter || '').toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
     );
 
     if (existing) {
@@ -1315,7 +1334,7 @@ export class StorageService {
     }
 
     const employees = this.getEmployees();
-    const userLower = (voter || '').trim().toLowerCase();
+    const userLower = String(voter ?? '').trim().toLowerCase();
     const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName === voter);
 
     // Validate everything first so nothing is saved if one category is invalid
