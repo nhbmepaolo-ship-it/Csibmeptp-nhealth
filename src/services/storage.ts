@@ -2,7 +2,6 @@ import { Employee, CSIRecord, VoteRecord, ActivityRecord, ActivityCategory, Card
 import { INITIAL_EMPLOYEES, INITIAL_CSI_RECORDS, INITIAL_VOTES, INITIAL_ACTIVITIES, HAPPY_LIFE_CLUBS } from '../data/initialData';
 import { INITIAL_ORG_CHART } from '../data/initialOrgChart';
 import { INITIAL_COACHING_RECORDS } from '../data/initialCoachingData';
-import { getStaffPhoto } from '../utils/staffAvatars';
 
 export const FIXED_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxYN-S1ejO-6-IWM11q84UjCcV4X6xiSPy9YgkSKichlnoyQ7RSC6xW_SW_DN1UUmoXMA/exec';
 
@@ -291,7 +290,7 @@ export class StorageService {
       const data = localStorage.getItem(KEYS.ORG_CHART);
       const employees = this.getEmployees().filter(e => e.status !== 'resigned');
 
-      const cleanStr = (s?: any) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const cleanStr = (s?: string) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
       const findEmp = (node: any) => {
         const rawId = (node.employeeId || '').trim();
@@ -309,37 +308,7 @@ export class StorageService {
         });
         if (byId) return byId;
 
-        // 2. Match by known staff aliases
-        const staffAliases: { match: (f: string, n: string, id: string) => boolean; targetCodes: string[] }[] = [
-          { match: (f, n, id) => f.includes('chalee') || f.includes('ชาลี') || n === 'ปิ้ง' || id.includes('mgr'), targetCodes: ['MGR_BME', '761080', 'chalee'] },
-          { match: (f, n, id) => f.includes('raschanee') || f.includes('รัชณี') || n === 'มิน' || id.includes('spv'), targetCodes: ['SPV_BME', '569492', 'raschanee'] },
-          { match: (f, n, id) => f.includes('supattra') || f.includes('สุพัตรา') || n === 'เปี้ยว' || id.includes('563770'), targetCodes: ['563770', 'supattra'] },
-          { match: (f, n, id) => f.includes('suwapa') || f.includes('สุวาภา') || f.includes('สุวภา') || n === 'อ้อ' || id.includes('612366'), targetCodes: ['612366', 'suwapa'] },
-          { match: (f, n, id) => f.includes('aiyaret') || f.includes('ไอยเรศ') || n.includes('เป๊ก') || n.includes('เป็ก') || id.includes('603892'), targetCodes: ['603892', 'aiyaret'] },
-          { match: (f, n, id) => f.includes('suphawat') || f.includes('ศุภวัฒน์') || n.includes('ลูกตาล') || n.includes('ลูกตอล') || n.includes('ตาล') || id.includes('606675'), targetCodes: ['606675', 'suphawat'] },
-          { match: (f, n, id) => f.includes('kanthida') || f.includes('กานต์ธิดา') || n.includes('แฮม') || id.includes('622659') || id.includes('563775'), targetCodes: ['622659', '563775', 'kanthida'] },
-          { match: (f, n, id) => f.includes('pannapat') || f.includes('พรรณพัชร') || n.includes('อ้อน') || n.includes('อ้น') || id.includes('622947'), targetCodes: ['622947', 'pannapat'] },
-          { match: (f, n, id) => f.includes('jatasig') || f.includes('เจตสิก') || f.includes('จตสิกข์') || n.includes('เอิ๊ก') || n.includes('เอ็ก') || id.includes('625192'), targetCodes: ['625192', 'jatasig'] },
-          { match: (f, n, id) => f.includes('nattaporn') || f.includes('ณัฐพร') || f.includes('ณฐพร') || n.includes('นท') || n === 'ณฐ' || id.includes('563779'), targetCodes: ['563779', 'nattaporn'] },
-          { match: (f, n, id) => f.includes('thaweewat') || f.includes('ทวีวัฒน์') || n.includes('ซัน') || id.includes('614669'), targetCodes: ['614669', 'thaweewat'] },
-          { match: (f, n, id) => f.includes('titima') || f.includes('ฐิติมา') || f.includes('ธิติมา') || n.includes('จิ๊บ') || id.includes('616475'), targetCodes: ['616475', 'titima'] },
-          { match: (f, n, id) => f.includes('pinmanee') || f.includes('ปิ่นมณี') || n.includes('ปิ่น') || id.includes('625195'), targetCodes: ['625195', 'pinmanee'] },
-          { match: (f, n, id) => f.includes('sutatip') || f.includes('สุธาทิพย์') || n.includes('ปุ้ย') || n.includes('ปุ๋ย') || id.includes('627537'), targetCodes: ['627537', 'sutatip'] },
-          { match: (f, n, id) => f.includes('pichaya') || f.includes('พิชญา') || n.includes('ไอซ์') || id.includes('627826'), targetCodes: ['627826', 'pichaya'] }
-        ];
-
-        for (const alias of staffAliases) {
-          if (alias.match(nodeF, nodeN, cleanStr(rawId))) {
-            const found = employees.find(e => {
-              const eu = cleanStr(e.username);
-              const ef = cleanStr(e.fullName);
-              return alias.targetCodes.some(code => eu.includes(cleanStr(code)) || ef.includes(cleanStr(code)));
-            });
-            if (found) return found;
-          }
-        }
-
-        // 3. Match by Name or Nickname
+        // Match by Name or Nickname
         return employees.find(e => {
           const ef = cleanStr(e.fullName);
           const en = cleanStr(e.nickname);
@@ -354,27 +323,7 @@ export class StorageService {
         if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
           let hasChanges = false;
           parsed.nodes = parsed.nodes.map((node: any) => {
-            // 1. Replace placeholder Naruemol with active UCC staff Sutatip Aiemmee
-            if (node.fullName?.includes('Naruemol') || node.fullName?.includes('นฤมล') || node.employeeId?.includes('naruemol')) {
-              hasChanges = true;
-              return {
-                id: node.id || 'org-7',
-                employeeId: 'sheet-emp-627537',
-                fullName: 'Sutatip Aiemmee',
-                nickname: 'ปุ้ย',
-                roleTitle: 'Admin / Junior Staff',
-                badgeLevel: 'Junior Staff',
-                photoUrl: 'https://img2.pic.in.th/ChatGPT-Image-Sep-4-2026-05_05_36-PM.png',
-                tags: [
-                  { id: 't-7', text: 'Admin', color: 'orange' },
-                  { id: 't-8', text: 'Junior Staff', color: 'amber' }
-                ],
-                branchId: node.branchId || 'ucc',
-                order: node.order || 5
-              };
-            }
-
-            // 2. Replace resigned employee Salisa Saelim with active employee Pichaya Narapong
+            // Replace resigned employee Salisa Saelim with active employee Pichaya Narapong
             if (node.fullName?.includes('Salisa') || node.fullName?.includes('ศลิษา') || node.employeeId?.includes('620331')) {
               hasChanges = true;
               return {
@@ -416,25 +365,9 @@ export class StorageService {
                 node.employeeId = matched.id;
                 hasChanges = true;
               }
-            } else {
-              const canonical = getStaffPhoto(node.employeeId, node.nickname, node.fullName);
-              if (canonical && !canonical.includes('dicebear') && (!currentPhoto || currentPhoto.includes('dicebear') || currentPhoto !== canonical)) {
-                currentPhoto = canonical;
-                hasChanges = true;
-              }
             }
 
-            // Backfill default jobDetails if missing
-            let jobDetails = node.jobDetails;
-            if (!jobDetails) {
-              const initNode = INITIAL_ORG_CHART.nodes.find(n => n.id === node.id || n.fullName === node.fullName || (n.nickname && n.nickname === node.nickname));
-              if (initNode?.jobDetails) {
-                jobDetails = initNode.jobDetails;
-                hasChanges = true;
-              }
-            }
-
-            return { ...node, photoUrl: currentPhoto, jobDetails };
+            return { ...node, photoUrl: currentPhoto };
           });
           if (hasChanges) {
             // Persist healed photo URLs locally without triggering remote sheet sync
@@ -529,52 +462,21 @@ export class StorageService {
   }
 
   // Status Overrides Helper
-  static getStatusOverrides(): Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }> {
+  static getStatusOverrides(): Record<string, 'active' | 'resigned'> {
     try {
       const data = localStorage.getItem('csi_bme_emp_status_overrides_v2');
-      if (!data) return {};
-      const parsed = JSON.parse(data);
-      const normalized: Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }> = {};
-      for (const [key, val] of Object.entries(parsed)) {
-        if (typeof val === 'string') {
-          normalized[key] = { status: val as 'active' | 'resigned' };
-        } else if (val && typeof val === 'object') {
-          normalized[key] = val as { status: 'active' | 'resigned'; resignedMonth?: string };
-        }
-      }
-      return normalized;
+      return data ? JSON.parse(data) : {};
     } catch {
       return {};
     }
   }
 
-  static saveStatusOverrides(overrides: Record<string, { status: 'active' | 'resigned'; resignedMonth?: string }>): void {
+  static saveStatusOverrides(overrides: Record<string, 'active' | 'resigned'>): void {
     try {
       localStorage.setItem('csi_bme_emp_status_overrides_v2', JSON.stringify(overrides));
     } catch (e) {
       console.error('Failed to save status overrides:', e);
     }
-  }
-
-  static isEmployeeActiveInMonth(emp: Employee, targetMonthKey?: string): boolean {
-    if (!emp) return false;
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const month = (targetMonthKey || currentMonthKey).trim();
-
-    if (emp.status === 'resigned' || (emp.status as string) === 'inactive') {
-      if (emp.resignedMonth && emp.resignedMonth.trim() !== '') {
-        // If query month is earlier than the resignation month, employee was active
-        return month < emp.resignedMonth.trim();
-      }
-      return false;
-    }
-
-    if (emp.resignedMonth && emp.resignedMonth.trim() !== '' && month >= emp.resignedMonth.trim()) {
-      return false;
-    }
-
-    return true;
   }
 
   // Employees
@@ -661,22 +563,16 @@ export class StorageService {
         continue;
       }
 
-      const uUpper = String(emp.username || '').trim().toUpperCase();
-      const uKey = String(emp.username || emp.id || '').toLowerCase();
-      const initialMatch = INITIAL_EMPLOYEES.find(e => (e.username && String(e.username).toLowerCase() === uKey) || (e.fullName && cleanFull && String(e.fullName).toLowerCase() === cleanFull.toLowerCase()));
+      const uUpper = (emp.username || '').trim().toUpperCase();
+      const uKey = (emp.username || emp.id || '').toLowerCase();
+      const initialMatch = INITIAL_EMPLOYEES.find(e => (e.username && e.username.toLowerCase() === uKey) || (e.fullName && cleanFull && e.fullName.toLowerCase() === cleanFull.toLowerCase()));
       let baseStatus = emp.status || 'active';
-      let baseResignedMonth = emp.resignedMonth || initialMatch?.resignedMonth;
       if (initialMatch && (initialMatch.status === 'resigned' || (initialMatch.status as string) === 'inactive') && !statusOverrides[uKey]) {
         baseStatus = 'resigned';
-        if (!baseResignedMonth) baseResignedMonth = initialMatch.resignedMonth || '2026-08';
       }
-      const override = statusOverrides[uKey];
-      const finalStatus = (typeof override === 'string' ? override : override?.status) || baseStatus;
-      const finalResignedMonth = (override && typeof override === 'object' && override.resignedMonth)
-        ? override.resignedMonth
-        : (emp.resignedMonth || baseResignedMonth);
+      const finalStatus = statusOverrides[uKey] || baseStatus;
 
-      if (emp.status !== finalStatus || emp.resignedMonth !== finalResignedMonth) {
+      if (emp.status !== finalStatus) {
         hasChanges = true;
       }
 
@@ -741,7 +637,6 @@ export class StorageService {
       cleanedList.push({
         ...emp,
         status: finalStatus,
-        resignedMonth: finalStatus === 'resigned' ? finalResignedMonth : undefined,
         nickname: updatedNick,
         fullName: updatedFull,
         password: updatedPass,
@@ -790,28 +685,11 @@ export class StorageService {
 
     list[idx] = { ...list[idx], ...updates };
 
-    if (updates.status !== undefined || updates.resignedMonth !== undefined) {
+    if (updates.status) {
       const overrides = this.getStatusOverrides();
-      const uKey = String(list[idx].username || list[idx].id || '').toLowerCase();
+      const uKey = (list[idx].username || list[idx].id || '').toLowerCase();
       if (uKey) {
-        const currentSt = updates.status !== undefined
-          ? (updates.status === 'inactive' ? 'resigned' : updates.status)
-          : (list[idx].status || 'active');
-
-        let currentMonth = updates.resignedMonth;
-        if (currentSt === 'resigned' && !currentMonth) {
-          const now = new Date();
-          currentMonth = list[idx].resignedMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        } else if (currentSt === 'active') {
-          currentMonth = undefined;
-        }
-
-        overrides[uKey] = {
-          status: currentSt as 'active' | 'resigned',
-          resignedMonth: currentMonth
-        };
-        list[idx].status = currentSt as 'active' | 'resigned';
-        list[idx].resignedMonth = currentMonth;
+        overrides[uKey] = updates.status === 'inactive' ? 'resigned' : updates.status;
         this.saveStatusOverrides(overrides);
       }
     }
@@ -939,41 +817,27 @@ export class StorageService {
       list = INITIAL_VOTES;
     } else {
       try {
-        const parsed = JSON.parse(data);
-        list = Array.isArray(parsed) ? parsed : INITIAL_VOTES;
+        list = JSON.parse(data);
       } catch {
         list = INITIAL_VOTES;
       }
     }
-
-    // Ensure all voter/nominee fields are strings
-    list = (list || []).map((v: any) => ({
-      ...v,
-      id: String(v?.id || ('vote-' + Math.random().toString(36).substring(2, 7))),
-      voter: String(v?.voter ?? '').trim(),
-      category: String(v?.category ?? '').trim(),
-      nominee: String(v?.nominee ?? '').trim(),
-      voteMonth: String(v?.voteMonth ?? '').trim(),
-      timestamp: String(v?.timestamp ?? '').trim()
-    }));
 
     // Filter out old mock records with fake users or resigned nominees
     const employees = this.getEmployees();
     const resignedNames = new Set(
       employees.filter(e => e.status === 'resigned' || (e.status as string) === 'inactive')
         .flatMap(e => [
-          String(e.fullName || '').toLowerCase(),
+          e.fullName.toLowerCase(),
           `${e.fullName} (${e.nickname})`.toLowerCase(),
-          String(e.nickname || '').toLowerCase(),
-          String(e.username || '').toLowerCase()
+          e.nickname.toLowerCase(),
+          e.username.toLowerCase()
         ])
     );
 
     const filtered = list.filter(v => {
-      if (!v) return false;
-      const nominee = String(v.nominee || '').toLowerCase();
-      const voter = String(v.voter || '').toLowerCase();
-      if (!nominee && !voter) return false;
+      const nominee = (v.nominee || '').toLowerCase();
+      const voter = (v.voter || '').toLowerCase();
       if (nominee.includes('วิไล') || nominee.includes('สุดา') || nominee.includes('นรินทร์') || nominee.includes('พรทิพย์')) return false;
       if (voter.startsWith('emp_a') || voter.startsWith('emp_nan') || voter.startsWith('emp_jiw') || voter.startsWith('emp_name') || voter.startsWith('emp_da')) return false;
       // Exclude votes where nominee is a resigned employee (e.g. Salisa Saelim)
@@ -990,16 +854,7 @@ export class StorageService {
   }
 
   static saveVotes(votes: VoteRecord[]): void {
-    const sanitized = (votes || []).map((v: any) => ({
-      ...v,
-      id: String(v?.id || ('vote-' + Math.random().toString(36).substring(2, 7))),
-      voter: String(v?.voter ?? '').trim(),
-      category: String(v?.category ?? '').trim(),
-      nominee: String(v?.nominee ?? '').trim(),
-      voteMonth: String(v?.voteMonth ?? '').trim(),
-      timestamp: String(v?.timestamp ?? '').trim()
-    }));
-    localStorage.setItem(KEYS.VOTES, JSON.stringify(sanitized));
+    localStorage.setItem(KEYS.VOTES, JSON.stringify(votes));
   }
 
   static addVote(voter: string, category: string, nominee: string, voteMonth: string): { success: boolean; message: string; monthKey?: string } {
@@ -1029,32 +884,24 @@ export class StorageService {
       }
     }
 
+    // Check if user already voted in this category and month
+    const existing = votes.find(
+      v => v.voter.toLowerCase() === userLower && v.category === category && v.voteMonth === voteMonth
+    );
+
+    if (existing) {
+      return {
+        success: false,
+        message: `คุณเคยโหวตในหัวข้อ '${category}' ของรอบเดือน ${voteMonth} ไปแล้ว! (เลือกรอบเดือนอื่นได้)`
+      };
+    }
+
     const now = new Date();
     const nowMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (voteMonth > nowMonthKey) {
       return {
         success: false,
         message: 'ไม่สามารถโหวตล่วงหน้าในเดือนอนาคตได้ กรุณาเลือกเดือนปัจจุบันหรือย้อนหลัง'
-      };
-    }
-
-    // Check if user already voted in this category and month, if so, update vote
-    const existingIndex = votes.findIndex(
-      v => String(v?.voter || '').toLowerCase() === userLower && v?.category === category && v?.voteMonth === voteMonth
-    );
-
-    if (existingIndex !== -1) {
-      votes[existingIndex] = {
-        ...votes[existingIndex],
-        nominee,
-        timestamp: formatInternationalDateTime(now)
-      };
-      this.saveVotes(votes);
-      this.syncDataToGoogleSheet('sync_votes', { votes }).catch(() => {});
-      return {
-        success: true,
-        message: `อัปเดตคะแนนโหวตหมวด '${category}' เรียบร้อยแล้ว`,
-        monthKey: voteMonth
       };
     }
 
@@ -1074,109 +921,6 @@ export class StorageService {
     return {
       success: true,
       message: `บันทึกผลการโหวตรอบเดือน ${voteMonth} เรียบร้อยแล้ว!`,
-      monthKey: voteMonth
-    };
-  }
-
-  static addVotesBatch(
-    voter: string,
-    voteMonth: string,
-    categoryNominees: Record<string, string>
-  ): { success: boolean; message: string; monthKey?: string } {
-    const REQUIRED_CATEGORIES = [
-      'พลังบวกประจำทีม (Positive Energy)',
-      'สุดยอดผู้ช่วยเหลือ (Super Helper)',
-      'ดาวรุ่งนักสร้างสรรค์ (Creative Thinker)',
-      'สุดยอดนักทำงานเป็นทีม (Team Player)'
-    ];
-
-    const missingCats = REQUIRED_CATEGORIES.filter(c => !categoryNominees[c] || !categoryNominees[c].trim());
-    if (missingCats.length > 0) {
-      return {
-        success: false,
-        message: `กรุณาเลือกลงคะแนนให้ครบทั้ง 4 หมวด (ยังขาด: ${missingCats.map(c => c.split(' ')[0]).join(', ')})`
-      };
-    }
-
-    const now = new Date();
-    const nowMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    if (voteMonth > nowMonthKey) {
-      return {
-        success: false,
-        message: 'ไม่สามารถโหวตล่วงหน้าในเดือนอนาคตได้ กรุณาเลือกเดือนปัจจุบันหรือย้อนหลัง'
-      };
-    }
-
-    const employees = this.getEmployees();
-    const userLower = voter.trim().toLowerCase();
-    const voterEmp = employees.find(e => e.username.toLowerCase() === userLower || e.fullName.toLowerCase() === userLower);
-
-    // Validate all nominees first before writing any data
-    for (const cat of REQUIRED_CATEGORIES) {
-      const nominee = categoryNominees[cat];
-      const nomineeEmp = employees.find(e => e.fullName === nominee || `${e.fullName} (${e.nickname})` === nominee);
-
-      if (nomineeEmp) {
-        if (nomineeEmp.status === 'resigned' || nomineeEmp.status === 'inactive') {
-          return {
-            success: false,
-            message: `พนักงาน ${nomineeEmp.fullName} (${nomineeEmp.nickname}) พ้นสภาพการเป็นพนักงาน/ลาออกแล้ว ไม่สามารถลงคะแนนในหมวด '${cat}' ได้`
-          };
-        }
-        if ((nomineeEmp as any).resignedMonth && voteMonth >= (nomineeEmp as any).resignedMonth) {
-          return {
-            success: false,
-            message: `พนักงาน ${nomineeEmp.fullName} ลาออกในรอบเดือน ${voteMonth} ไม่สามารถลงคะแนนได้`
-          };
-        }
-      }
-
-      if (voterEmp && nomineeEmp) {
-        if (voterEmp.id === nomineeEmp.id || voterEmp.username.toLowerCase() === nomineeEmp.username.toLowerCase()) {
-          return {
-            success: false,
-            message: `ไม่สามารถลงคะแนนโหวตให้ตนเองในหมวด '${cat}' ได้`
-          };
-        }
-      }
-    }
-
-    const votes = this.getVotes();
-    const timestampStr = formatInternationalDateTime(now);
-
-    for (const cat of REQUIRED_CATEGORIES) {
-      const nominee = categoryNominees[cat];
-      const existingIndex = votes.findIndex(
-        v => String(v?.voter || '').toLowerCase() === userLower && v?.category === cat && v?.voteMonth === voteMonth
-      );
-
-      if (existingIndex !== -1) {
-        votes[existingIndex] = {
-          ...votes[existingIndex],
-          nominee,
-          timestamp: timestampStr
-        };
-      } else {
-        votes.unshift({
-          id: 'vote-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-          timestamp: timestampStr,
-          voter,
-          category: cat,
-          nominee,
-          voteMonth
-        });
-      }
-    }
-
-    this.saveVotes(votes);
-    // Single Google Sheets sync for all 4 votes to prevent network timeout / abortion
-    this.syncDataToGoogleSheet('sync_votes', { votes }).catch(err => {
-      console.warn('Sync votes batch notice:', err);
-    });
-
-    return {
-      success: true,
-      message: `บันทึกผลการโหวตครบทั้ง 4 หมวดของรอบเดือน ${voteMonth} สำเร็จเรียบร้อย!`,
       monthKey: voteMonth
     };
   }
@@ -1355,7 +1099,11 @@ export class StorageService {
       console.info('Backend proxy /api/sync-sheets unreachable, using direct connection:', e?.message || e);
     }
 
-    // 2. Direct fallback to Google Apps Script
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, message: 'ไม่มีสัญญาณอินเทอร์เน็ต ไม่สามารถส่งข้อมูลไปยัง Google Sheet ได้' };
+    }
+
+    // 2. Direct request to Google Apps Script (sent ONCE - never re-sent, otherwise rows get duplicated)
     try {
       const directRes = await fetch(targetUrl, {
         method: 'POST',
@@ -1377,21 +1125,12 @@ export class StorageService {
         }
       }
     } catch (directErr: any) {
-      console.info('Direct CORS fetch to GAS completed/skipped (expected due to browser cross-origin policy), ensuring delivery via standard POST:', directErr?.message || directErr);
+      // The browser can throw here (CORS on Apps Script's redirect) even though the request WAS delivered.
+      // Re-sending it (the old "no-cors" step 3) is exactly what created duplicate rows, so we do not.
+      console.info('Direct request to GAS finished without readable response (request already sent):', directErr?.message || directErr);
     }
 
-    // 3. Guaranteed Fallback: no-cors direct submission to Google Apps Script
-    try {
-      await fetch(targetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-      return { success: true, message: 'ส่งข้อมูลลง Google Sheet เรียบร้อยแล้ว (Direct Sync)' };
-    } catch (err: any) {
-      return { success: false, message: `ไม่สามารถส่งข้อมูลไปยัง Google Sheet ได้: ${err.message || 'โปรดตรวจสอบสัญญาณอินเทอร์เน็ต'}` };
-    }
+    return { success: true, message: 'ส่งข้อมูลลง Google Sheet เรียบร้อยแล้ว' };
   }
 
   static addActivity(record: Omit<ActivityRecord, 'id' | 'timestamp' | 'totalMinutes' | 'dateKey'> & { timestamp?: string; date?: string; dateFormatted?: string }): ActivityRecord {
@@ -1416,13 +1155,9 @@ export class StorageService {
     list.unshift(newRecord);
     this.saveActivities(list);
 
-    // Auto sync new record to Google Sheets if Web App URL is configured
+    // Auto sync new record to Google Sheets - SEND ONCE ONLY.
+    // (Previously this fired two requests - sync_activities AND add_activity - so every save wrote 2 rows.)
     this.syncToGoogleSheets([newRecord]);
-    this.syncDataToGoogleSheet('add_activity', {
-      ...newRecord,
-      date: norm.dateFormatted,
-      dateFormatted: norm.dateFormatted
-    });
 
     return newRecord;
   }
@@ -1460,7 +1195,6 @@ export class StorageService {
 
     // Auto sync updated record to Google Sheets
     this.syncToGoogleSheets([updated]);
-    this.syncDataToGoogleSheet('update_activity', updated);
 
     return updated;
   }
@@ -1476,87 +1210,23 @@ export class StorageService {
     }
   }
 
-  // Auth helper with session expiration (45 min inactivity / 8h shift max / tab close detection)
+  // Auth helper
   static getCurrentUser(): Employee | null {
     const data = localStorage.getItem(KEYS.CURRENT_USER);
     if (!data) return null;
     try {
-      const parsed = JSON.parse(data);
-      let user: Employee | null = null;
-      let loginAt = 0;
-      let lastActiveAt = 0;
-
-      if (parsed && parsed.user && typeof parsed.lastActiveAt === 'number') {
-        user = parsed.user;
-        loginAt = parsed.loginAt || parsed.lastActiveAt;
-        lastActiveAt = parsed.lastActiveAt;
-      } else if (parsed && parsed.id && parsed.fullName) {
-        user = parsed;
-        loginAt = Date.now();
-        lastActiveAt = Date.now();
-      }
-
-      if (!user) {
-        this.setCurrentUser(null);
-        return null;
-      }
-
-      // Check if browser/tab was closed previously:
-      // If sessionStorage has no active marker, session is treated as expired
-      const tabActive = sessionStorage.getItem('bme_session_active');
-      if (!tabActive) {
-        this.setCurrentUser(null);
-        return null;
-      }
-
-      const now = Date.now();
-      const INACTIVITY_LIMIT = 45 * 60 * 1000; // 45 minutes
-      const MAX_DURATION = 8 * 60 * 60 * 1000; // 8 hours
-
-      if (now - lastActiveAt > INACTIVITY_LIMIT || now - loginAt > MAX_DURATION) {
-        this.setCurrentUser(null);
-        return null;
-      }
-
-      return user;
+      return JSON.parse(data);
     } catch {
-      this.setCurrentUser(null);
       return null;
     }
   }
 
   static setCurrentUser(user: Employee | null): void {
     if (user) {
-      const now = Date.now();
-      const sessionData = {
-        user,
-        loginAt: now,
-        lastActiveAt: now
-      };
-      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(sessionData));
-      try {
-        sessionStorage.setItem('bme_session_active', 'true');
-      } catch {}
+      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
     } else {
       localStorage.removeItem(KEYS.CURRENT_USER);
-      try {
-        sessionStorage.removeItem('bme_session_active');
-      } catch {}
     }
-  }
-
-  static touchUserActivity(): void {
-    const data = localStorage.getItem(KEYS.CURRENT_USER);
-    if (!data) return;
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed && parsed.user && typeof parsed.lastActiveAt === 'number') {
-        const now = Date.now();
-        if (now - parsed.lastActiveAt < 20000) return; // throttle 20s
-        parsed.lastActiveAt = now;
-        localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(parsed));
-      }
-    } catch {}
   }
 
   static authenticateUser(user: string, pass: string): { success: boolean; user?: Employee; message?: string } {
@@ -1647,7 +1317,32 @@ export class StorageService {
       this.saveGoogleSheetId(sheetId);
     }
     try {
-      // 1. Sync directly from Google Sheet tabs (CSI, Employees, Activities, Coaching, OrgChart, Votes)
+      // 1. Sync directly with Google Apps Script Web App (get_all)
+      try {
+        const gasResult = await this.syncDataToGoogleSheet('get_all', {});
+        if (gasResult && (gasResult as any).data) {
+          const payload = (gasResult as any).data;
+          if (Array.isArray(payload.activities) && payload.activities.length > 0) {
+            this.saveActivities(payload.activities.map((a: any) => ({
+              ...a,
+              dateKey: a.timestamp ? a.timestamp.substring(0, 10) : (a.date || '')
+            })));
+          }
+          if (Array.isArray(payload.votes) && payload.votes.length > 0) {
+            this.saveVotes(payload.votes);
+          }
+          if (Array.isArray(payload.coaching) && payload.coaching.length > 0) {
+            this.saveCoachingRecords(payload.coaching);
+          }
+          if (payload.orgChart && payload.orgChart.nodes) {
+            this.saveOrgChart(payload.orgChart);
+          }
+        }
+      } catch (errGas) {
+        console.warn('Apps Script get_all sync notice:', errGas);
+      }
+
+      // 2. Sync CSI Responses & Staff from Sheet
       let data: any = null;
 
       try {
@@ -1671,25 +1366,6 @@ export class StorageService {
           totalFetched: 0,
           message: data?.message || 'ไม่สามารถเชื่อมต่อดึงข้อมูลจาก Google Sheet ได้ โปรดตรวจสอบว่าได้เปิดสิทธิ์แชร์ "ทุกคนที่มีลิงก์ดูได้"'
         };
-      }
-
-      // 2. Non-blocking Apps Script supplemental sync in background
-      const storedGasUrl = localStorage.getItem('csi_google_sheets_url');
-      if (storedGasUrl && storedGasUrl.includes('script.google.com')) {
-        this.syncDataToGoogleSheet('get_all', {}).then(gasResult => {
-          if (gasResult && (gasResult as any).data) {
-            const payload = (gasResult as any).data;
-            if (Array.isArray(payload.activities) && payload.activities.length > 0) {
-              this.saveActivities(payload.activities.map((a: any) => ({
-                ...a,
-                dateKey: a.timestamp ? a.timestamp.substring(0, 10) : (a.date || '')
-              })));
-            }
-            if (Array.isArray(payload.votes) && payload.votes.length > 0) {
-              this.saveVotes(payload.votes);
-            }
-          }
-        }).catch(() => {});
       }
 
       const fetchedCsi: CSIRecord[] = data.csiRecords || [];
@@ -1745,18 +1421,14 @@ export class StorageService {
 
         // Merge fetched employees into map while preserving local status overrides & resigned status
         cleanFetched.forEach(f => {
-          const uKey = (f.username || '').toLowerCase();
+          const uKey = f.username.toLowerCase();
           const existing = empMap.get(uKey);
-          const override = statusOverrides[uKey];
-          const finalStatus = (typeof override === 'string' ? override : override?.status) || existing?.status || f.status || 'active';
-          const finalResignedMonth = (override && typeof override === 'object' && override.resignedMonth)
-            ? override.resignedMonth
-            : (existing?.resignedMonth || f.resignedMonth);
+          const overrideStatus = statusOverrides[uKey];
+          const finalStatus = overrideStatus || existing?.status || f.status || 'active';
 
           empMap.set(uKey, {
             ...f,
             status: finalStatus,
-            resignedMonth: finalStatus === 'resigned' ? finalResignedMonth : undefined,
             club: existing?.club || f.club,
             password: f.password || existing?.password || '123'
           });
@@ -1795,46 +1467,12 @@ export class StorageService {
 
       // Save Org Chart from Google Sheet (Tab ผังองค์กร)
       if (data.orgChart && data.orgChart.nodes && data.orgChart.nodes.length > 0) {
-        this.saveOrgChart(data.orgChart, false);
-      }
-      // Re-heal and auto-sync Org Chart photo URLs with the latest employee records
-      try {
-        this.getOrgChart();
-      } catch (e) {
-        console.warn('Auto heal org chart notice:', e);
+        this.saveOrgChart(data.orgChart);
       }
 
       // Save Votes from Google Sheet (Tab Votes)
       if (Array.isArray(data.votes) && data.votes.length > 0) {
-        const cleanVotes = data.votes
-          .filter((v: any) => v && (v.voter || v.nominee))
-          .map((v: any) => {
-            const ts = (v.timestamp || '').trim();
-            let vMonth = (v.voteMonth || '').trim();
-            if (!vMonth && ts) {
-              if (ts.includes('/')) {
-                const parts = ts.split(/[\s,]+/)[0].split('/');
-                if (parts.length === 3) {
-                  let y = parseInt(parts[2], 10);
-                  if (y > 2500) y -= 543;
-                  vMonth = `${y}-${parts[1].padStart(2, '0')}`;
-                }
-              } else if (ts.includes('-')) {
-                vMonth = ts.substring(0, 7);
-              }
-            }
-            return {
-              id: v.id || ('vote-' + Math.random().toString(36).substring(2, 7)),
-              timestamp: ts,
-              voter: String(v.voter || '').trim(),
-              category: String(v.category || '').trim(),
-              nominee: String(v.nominee || '').trim(),
-              voteMonth: vMonth || ''
-            };
-          });
-        if (cleanVotes.length > 0) {
-          this.saveVotes(cleanVotes);
-        }
+        this.saveVotes(data.votes);
       }
 
       this.saveGoogleSheetId(sheetId);
@@ -1855,7 +1493,7 @@ export class StorageService {
   }
 
   // Client-side fallback to parse Google Sheets CSV directly
-  private static async clientSideFetchGoogleSheet(sheetId: string): Promise<{ success: boolean; csiRecords?: CSIRecord[]; employees?: Employee[]; coachingRecords?: CoachingRecord[]; activities?: ActivityRecord[]; orgChart?: any; votes?: VoteRecord[]; message?: string }> {
+  private static async clientSideFetchGoogleSheet(sheetId: string): Promise<{ success: boolean; csiRecords?: CSIRecord[]; employees?: Employee[]; coachingRecords?: CoachingRecord[]; activities?: ActivityRecord[]; orgChart?: any; message?: string }> {
     try {
       const parseCSV = (text: string) => {
         const lines: string[][] = [];
@@ -2269,57 +1907,13 @@ export class StorageService {
         console.warn('Attempt to fetch Org Chart tab skipped:', e);
       }
 
-      // 6. Fetch Votes client-side
-      const votes: VoteRecord[] = [];
-      try {
-        const voteUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('Votes')}`;
-        const voteRes = await fetch(voteUrl);
-        if (voteRes.ok) {
-          const voteCsv = await voteRes.text();
-          if (voteCsv && !voteCsv.includes('google-signin') && !voteCsv.includes('<!DOCTYPE html>')) {
-            const voteRows = parseCSV(voteCsv);
-            if (voteRows.length > 1) {
-              for (let i = 1; i < voteRows.length; i++) {
-                const r = voteRows[i];
-                if (!r || r.length < 3) continue;
-                const ts = (r[0] || '').trim();
-                let vMonth = (r[4] || '').trim();
-                if (!vMonth && ts) {
-                  if (ts.includes('/')) {
-                    const parts = ts.split(/[\s,]+/)[0].split('/');
-                    if (parts.length === 3) {
-                      let y = parseInt(parts[2], 10);
-                      if (y > 2500) y -= 543;
-                      vMonth = `${y}-${parts[1].padStart(2, '0')}`;
-                    }
-                  } else if (ts.includes('-')) {
-                    vMonth = ts.substring(0, 7);
-                  }
-                }
-                votes.push({
-                  id: `vote-${i}`,
-                  timestamp: ts,
-                  voter: String(r[1] || '').trim(),
-                  category: String(r[2] || '').trim(),
-                  nominee: String(r[3] || '').trim(),
-                  voteMonth: vMonth || ''
-                });
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Attempt to fetch Votes tab skipped:', e);
-      }
-
       return {
         success: true,
         csiRecords,
         employees,
         coachingRecords,
         activities,
-        orgChart,
-        votes
+        orgChart
       };
     } catch (e: any) {
       console.error('Client-side Google Sheet fetch error:', e);
@@ -2375,10 +1969,14 @@ export class StorageService {
           console.info(`Backend proxy /api/sync-sheets responded with status ${res.status}, using direct connection...`);
         }
       } catch (e: any) {
-        console.info('Backend proxy /api/sync-sheets unreachable or timed out, using direct connection:', e?.message || e);
+        if (e?.name === 'AbortError') {
+          // Proxy timed out but may already have delivered the data - do NOT send again (would duplicate rows)
+          return { success: true, message: 'ส่งข้อมูลแล้ว กำลังประมวลผลใน Google Sheet' };
+        }
+        console.info('Backend proxy /api/sync-sheets unreachable, using direct connection:', e?.message || e);
       }
 
-      // 2. Direct request to Google Apps Script with 20s timeout
+      // 2. Direct request to Google Apps Script with 20s timeout (sent ONCE)
       try {
         const directController = new AbortController();
         const directTimer = setTimeout(() => directController.abort(), 20000);
@@ -2402,25 +2000,11 @@ export class StorageService {
           }
         }
       } catch (directErr: any) {
-        console.info('Direct CORS request to Google Apps Script skipped or timed out:', directErr?.message || directErr);
+        // Request may already have reached Apps Script (CORS error on redirect) - never re-send it
+        console.info('Direct request to Google Apps Script finished without readable response:', directErr?.message || directErr);
       }
 
-      // 3. Fallback no-cors direct submission with 10s timeout
-      try {
-        const noCorsController = new AbortController();
-        const noCorsTimer = setTimeout(() => noCorsController.abort(), 10000);
-        await fetch(gasUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(fullPayload),
-          signal: noCorsController.signal
-        });
-        clearTimeout(noCorsTimer);
-        return { success: true, message: 'ส่งข้อมูลลง Google Sheet เรียบร้อยแล้ว (Direct Sync)' };
-      } catch (err: any) {
-        return { success: true, message: 'บันทึกข้อมูลเรียบร้อยแล้ว' };
-      }
+      return { success: true, message: 'ส่งข้อมูลลง Google Sheet เรียบร้อยแล้ว' };
     } catch (e: any) {
       return { success: true, message: 'บันทึกข้อมูลเรียบร้อยแล้ว' };
     }
