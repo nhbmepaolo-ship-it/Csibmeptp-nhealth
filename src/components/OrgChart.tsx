@@ -450,7 +450,9 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
       const res = await fetch(url, { mode: 'cors', signal: ctrl.signal });
       if (!res.ok) return null;
       const blob = await res.blob();
-      return blob && blob.size > 0 ? blob : null;
+      // Reject HTML/JSON error pages (e.g. SPA fallback) - only real images are accepted
+      if (!blob || blob.size === 0 || !(blob.type || '').startsWith('image/')) return null;
+      return blob;
     } catch {
       return null;
     } finally {
@@ -510,7 +512,14 @@ export function OrgChart({ currentUser, showToast }: OrgChartProps) {
             finalUrl = currentSrc;
           } else if (currentSrc) {
             // Always go through the server proxy for external images (guarantees CORS headers), then fall back to direct
+            const isExternal = /^https?:\/\//i.test(currentSrc) && !currentSrc.includes('/api/image-proxy');
             let blob = await fetchBlobWithTimeout(getProxiedImageUrl(currentSrc));
+            if (!blob && isExternal) {
+              // Public CORS-enabled image proxy (works even when /api/image-proxy is unavailable)
+              blob = await fetchBlobWithTimeout(
+                `https://wsrv.nl/?url=${encodeURIComponent(cleanOrgPhotoUrl(currentSrc))}&output=png`
+              );
+            }
             if (!blob && !currentSrc.startsWith('data:') && !currentSrc.startsWith('blob:')) {
               blob = await fetchBlobWithTimeout(currentSrc);
             }
